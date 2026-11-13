@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_matches
+    description: Cleaned and normalized IPL match level data with mapped teams and venues.
+    columns:
+      - name: match_id
+        tests:
+          - unique
+          - not_null
+      - name: toss_decision
+        tests:
+          - accepted_values:
+              values: ['bat', 'field']
+
+  - name: stg_deliveries
+    description: Cleaned and normalized IPL delivery level data.
+    columns:
+      - name: match_id
+        tests:
+          - not_null
+
+  - name: stg_weather_hourly
+    description: Flattened hourly historical weather observations per venue.
+    columns:
+      - name: venue_id
+        tests:
+          - not_null
+      - name: observed_at
+        tests:
+          - not_null

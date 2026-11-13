@@ -1,0 +1,91 @@
+version: 2
+
+models:
+  - name: dim_team
+    description: Dimension table of IPL cricket franchises with normalized identifiers.
+    columns:
+      - name: team_id
+        description: Unique primary key for each IPL team.
+        tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: Standardized full team name.
+      - name: short_name
+        description: Team abbreviation or acronym.
+
+  - name: dim_venue
+    description: Dimension table of cricket stadiums with geographic coordinates.
+    columns:
+      - name: venue_id
+        description: Unique primary key for each venue.
+        tests:
+          - unique
+          - not_null
+      - name: venue_name
+        description: Standardized official venue name.
+      - name: city
+        description: City where the venue is located.
+      - name: country
+        description: Country of the venue.
+      - name: latitude
+        description: Decimal latitude coordinate of the venue.
+      - name: longitude
+        description: Decimal longitude coordinate of the venue.
+
+  - name: fct_match
+    description: Grain of one row per IPL match with enriched weather features, outcome flags, and score summaries.
+    columns:
+      - name: match_id
+        description: Unique match identifier.
+        tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Year season was played.
+      - name: match_date
+        description: Date match occurred.
+      - name: venue_id
+        description: Foreign key to dim_venue.
+        tests:
+          - relationships:
+              to: ref('dim_venue')
+              field: venue_id
+      - name: chasing_team_won
+        description: Boolean indicating if the team batting second won the match. Null for no result.
+      - name: humidity_band
+        description: Qualitative humidity classification (low, medium, high).
+        tests:
+          - accepted_values:
+              values: ['low', 'medium', 'high']
+      - name: temp_band
+        description: Qualitative temperature classification (cool, warm, hot).
+        tests:
+          - accepted_values:
+              values: ['cool', 'warm', 'hot']
+      - name: dew_risk_band
+        description: Dew probability risk proxy based on dew spread (high, medium, low).
+        tests:
+          - accepted_values:
+              values: ['high', 'medium', 'low']
+
+  - name: fct_innings
+    description: Grain of one row per innings in an IPL match with aggregated batting metrics.
+    columns:
+      - name: match_id
+        description: Foreign key to fct_match.
+      - name: innings_no
+        description: Innings sequence number (1 or 2).
+
+  - name: mart_venue_stats
+    description: Venue level aggregated statistics including chase and toss conversion win percentages.
+  - name: mart_weather_impact
+    description: Weather impact matrix by humidity, temperature, and dew risk bands.
+  - name: mart_team_season
+    description: Aggregated performance metrics for each team by season.
+  - name: mart_batter_season
+    description: Batting statistics aggregated by batter and season.
+  - name: mart_bowler_season
+    description: Bowling statistics aggregated by bowler and season.
+  - name: mart_batter_weather
+    description: Batter performance metrics partitioned by ambient humidity bands.
