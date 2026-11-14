@@ -8,10 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 USER airflow
 
-# Install custom providers and dbt-snowflake
+# Install custom providers and dbt-bigquery
 RUN pip install --no-cache-dir \
-    dbt-snowflake \
+    dbt-bigquery \
+    google-cloud-bigquery \
     apache-airflow-providers-airbyte \
-    apache-airflow-providers-snowflake \
     apache-airflow-providers-http \
     requests

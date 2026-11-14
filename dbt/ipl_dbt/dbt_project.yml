@@ -17,16 +17,16 @@ clean-targets:
 
 seeds:
   ipl_dbt:
-    +schema: STAGING
+    +schema: staging
 
 models:
   ipl_dbt:
     staging:
-      +schema: STAGING
+      +schema: staging
       +materialized: view
     intermediate:
-      +schema: STAGING
+      +schema: staging
       +materialized: view
     marts:
-      +schema: MARTS
+      +schema: marts
       +materialized: table

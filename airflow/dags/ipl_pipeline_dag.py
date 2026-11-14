@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
+import os
+import logging
+import requests
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-import logging
 
 def on_dag_failure(context):
     task_id = context.get('task_instance').task_id
@@ -11,13 +13,47 @@ def on_dag_failure(context):
     logging.error(f"Task {task_id} in run {run_id} failed: {exception}")
 
 def check_data_sources(**context):
-    logging.info("Checking availability of raw CSV URLs and Open-Meteo endpoint...")
+    matches_url = os.getenv('IPL_MATCHES_URL')
+    deliveries_url = os.getenv('IPL_DELIVERIES_URL')
+    weather_url = os.getenv('OPEN_METEO_ARCHIVE_URL', 'https://archive-api.open-meteo.com/v1/archive')
+
+    logging.info("Checking data sources availability...")
+    if matches_url:
+        r = requests.head(matches_url, timeout=10)
+        logging.info(f"Matches CSV check status: {r.status_code}")
+    if deliveries_url:
+        r = requests.head(deliveries_url, timeout=10)
+        logging.info(f"Deliveries CSV check status: {r.status_code}")
+
+    w = requests.get(f"{weather_url}?latitude=18.93&longitude=72.82&start_date=2024-04-01&end_date=2024-04-02&hourly=temperature_2m", timeout=10)
+    logging.info(f"Open-Meteo API ping status: {w.status_code}")
 
 def validate_raw_tables(**context):
-    logging.info("Validating raw data counts and schema in IPL_DB.RAW...")
+    project_id = os.getenv('GCP_PROJECT_ID')
+    keyfile = os.getenv('GCP_KEYFILE_DBT', '/opt/airflow/secrets/dbt-sa.json')
+
+    if not os.path.exists(keyfile):
+        logging.warning("GCP keyfile not found at %s. Skipping live validation in mock mode.", keyfile)
+        return
+
+    from google.cloud import bigquery
+    client = bigquery.Client.from_service_account_json(keyfile, project=project_id)
+
+    queries = {
+        "matches": f"SELECT COUNT(*) as cnt FROM `{project_id}.raw.ipl_matches` WHERE match_id IS NOT NULL",
+        "deliveries": f"SELECT COUNT(*) as cnt FROM `{project_id}.raw.ipl_deliveries` WHERE match_id IS NOT NULL",
+        "weather": f"SELECT COUNT(*) as cnt FROM `{project_id}.raw.weather_hourly`"
+    }
+
+    for name, sql in queries.items():
+        res = list(client.query(sql).result())
+        cnt = res[0].cnt if res else 0
+        logging.info(f"Table raw.{name} validation row count: {cnt}")
+        if cnt == 0:
+            raise ValueError(f"Raw table raw.{name} is empty or has null match_ids.")
 
 def notify_pipeline_success(**context):
-    logging.info("IPL Weather pipeline completed successfully.")
+    logging.info("IPL Weather pipeline completed successfully on BigQuery.")
 
 default_args = {
     'owner': 'airflow',
@@ -32,11 +68,11 @@ default_args = {
 with DAG(
     dag_id='ipl_weather_pipeline',
     default_args=default_args,
-    description='End-to-end IPL and Weather impact data pipeline',
+    description='End-to-end IPL and Weather data pipeline with BigQuery',
     schedule_interval=None,  # Manual trigger for demo
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    tags=['ipl', 'de-microproject'],
+    tags=['ipl', 'de-microproject', 'bigquery'],
 ) as dag:
 
     check_sources = PythonOperator(
@@ -44,10 +80,9 @@ with DAG(
         python_callable=check_data_sources,
     )
 
-    # In production, replace BashOperator placeholders with AirbyteTriggerSyncOperator
-    sync_ipl_csv = BashOperator(
-        task_id='sync_ipl_csv',
-        bash_command='echo "Triggering Airbyte CSV sync..."',
+    sync_cricket_files = BashOperator(
+        task_id='sync_cricket_files',
+        bash_command='echo "Triggering Airbyte cricket files sync..."',
     )
 
     sync_weather = BashOperator(
@@ -90,5 +125,5 @@ with DAG(
         python_callable=notify_pipeline_success,
     )
 
-    check_sources >> [sync_ipl_csv, sync_weather] >> validate_raw
+    check_sources >> [sync_cricket_files, sync_weather] >> validate_raw
     validate_raw >> dbt_deps >> dbt_seed >> dbt_run >> dbt_test >> refresh_bi_context >> notify_success

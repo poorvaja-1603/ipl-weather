@@ -2,15 +2,15 @@ version: 2
 
 sources:
   - name: raw
-    database: "{{ env_var('SNOWFLAKE_DATABASE', 'IPL_DB') }}"
-    schema: RAW
+    project: "{{ env_var('GCP_PROJECT_ID', '') }}"
+    schema: raw
     loaded_at_field: _airbyte_extracted_at
     freshness:
       warn_after: {count: 7, period: day}
     tables:
       - name: ipl_matches
-        description: Raw IPL matches ingested via Airbyte
+        description: Raw IPL matches ingested via Airbyte into BigQuery raw dataset
       - name: ipl_deliveries
-        description: Raw IPL ball-by-ball deliveries ingested via Airbyte
+        description: Raw IPL ball-by-ball deliveries ingested via Airbyte into BigQuery raw dataset
       - name: weather_hourly
         description: Raw historical weather partitions ingested from Open-Meteo via Airbyte

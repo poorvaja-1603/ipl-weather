@@ -3,6 +3,12 @@
 *.env
 !.env.example
 
+# Service account secrets and credentials
+secrets/
+*.json
+!airbyte/weather_partitions.json
+!dbt/ipl_dbt/package-lock.yml
+
 # Python
 __pycache__/
 *.py[cod]
@@ -27,6 +33,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Cricsheet raw downloads and temp
+data/*.zip
+data/temp/
 
 # dbt
 dbt/ipl_dbt/target/

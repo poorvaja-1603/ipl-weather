@@ -2,13 +2,12 @@ ipl_dbt:
   target: dev
   outputs:
     dev:
-      type: snowflake
-      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_DBT_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_DBT_PASSWORD') }}"
-      role: "{{ env_var('SNOWFLAKE_DBT_ROLE', 'TRANSFORM_ROLE') }}"
-      database: "{{ env_var('SNOWFLAKE_DATABASE', 'IPL_DB') }}"
-      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'IPL_WH') }}"
-      schema: STAGING
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GCP_KEYFILE_DBT') }}"
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: staging
+      location: "{{ env_var('BQ_LOCATION', 'US') }}"
       threads: 4
-      client_session_keep_alive: False
+      maximum_bytes_billed: "{{ env_var('BQ_MAX_BYTES_BILLED', '1000000000') | int }}"
+      execution_project: "{{ env_var('GCP_PROJECT_ID') }}"

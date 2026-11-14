@@ -1,6 +1,6 @@
-# Core dependencies for local scripts, dbt, and Streamlit BI
-dbt-snowflake>=1.8.0,<2.0.0
-snowflake-connector-python>=3.10.0
+# Core dependencies for local scripts, dbt BigQuery, and Streamlit BI
+dbt-bigquery>=1.8.0,<2.0.0
+google-cloud-bigquery>=3.20.0
 streamlit>=1.35.0
 google-genai>=0.1.0
 sqlglot>=25.0.0
