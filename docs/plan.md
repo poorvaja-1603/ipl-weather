@@ -28,7 +28,7 @@ Team of 2 (Member A, Member B). Demo and submission: 16 and 17 Nov 2026 in lab s
 
 **Idea:** Join IPL ball-by-ball and match data with hourly historical weather (temperature, humidity, dew point, rain, wind) at each venue. Answer questions like "Which venue has the best chase win rate when humidity is above 70%?" through a natural language chat interface.
 
-**Why it fits the rubric:** batch ingestion with Airbyte from two different source types (CSV files and a REST API), Airflow DAG orchestration, dbt staging and marts with tests and docs, a cloud warehouse, and a conversational BI interface that converts questions to SQL.
+**Why it fits the rubric:** dynamic ingestion with Airbyte from two different source types (an open dynamic cricket match feed and the Open-Meteo REST API with incremental synchronization), Airflow DAG orchestration, dbt staging and marts with tests and docs, a cloud warehouse, and a conversational BI interface that converts questions to SQL.
 
 **Report template mapping:** Section 15.
 
@@ -39,7 +39,7 @@ Team of 2 (Member A, Member B). Demo and submission: 16 and 17 Nov 2026 in lab s
 | Layer          | Choice                                              | Notes                                            |
 | -------------- | --------------------------------------------------- | ------------------------------------------------ |
 | Orchestration  | Apache Airflow in Docker (LocalExecutor + Postgres) | Custom image includes dbt                        |
-| Ingestion      | Airbyte (local via `abctl`)                         | Two connections: CSV and weather                 |
+| Ingestion      | Airbyte (local via `abctl`)                         | Two connections: dynamic cricket feed and weather REST API |
 | Warehouse      | Snowflake (free trial, XSMALL, auto-suspend 60s)    | BigQuery is a possible swap, see Section 16      |
 | Transformation | dbt Core with `dbt-snowflake`                       | Seeds, staging, intermediate, marts, tests, docs |
 | BI interface   | Streamlit + Gemini text-to-SQL                      | Read-only role, SQL guard, charts                |
@@ -53,9 +53,9 @@ Assume Docker Desktop is available. On Windows, use WSL2.
 ## 3. Architecture and data flow
 
 ```
-IPL matches.csv + deliveries.csv (HTTPS raw files)       Open-Meteo Archive API (REST)
+Dynamic Cricket Match & Ball Feed (Cricsheet)            Open-Meteo Weather API (REST)
               |                                                   |
-      Airbyte File source                         Airbyte custom source (Connector Builder)
+      Airbyte HTTP source                         Airbyte custom source (Connector Builder)
               |                                                   |
               +---------------------> Airbyte -------------------+
                                          |
@@ -79,7 +79,7 @@ IPL matches.csv + deliveries.csv (HTTPS raw files)       Open-Meteo Archive API 
 Airflow DAG `ipl_weather_pipeline`:
 
 ```
-check_sources >> [sync_ipl_csv, sync_weather] >> validate_raw
+check_sources >> [sync_cricket_feed, sync_weather] >> validate_raw
 >> dbt_deps >> dbt_seed >> dbt_run >> dbt_test >> refresh_bi_context >> notify_success
 ```
 
@@ -94,7 +94,7 @@ check_sources >> [sync_ipl_csv, sync_weather] >> validate_raw
 | A1  | Repo setup, `.env.example`, `.gitignore`, README skeleton                                                     | Repo                                        |
 | A2  | Snowflake account, roles, schemas (Section 7)                                                                 | `infra/snowflake_setup.sql`                 |
 | A3  | Airflow in Docker with custom image (dbt, Airbyte, Snowflake providers)                                       | `docker-compose.yml`, `Dockerfile`          |
-| A4  | Airbyte via `abctl`, CSV source and destination, connection `ipl_csv_to_snowflake`                            | `airbyte/` notes                            |
+| A4  | Airbyte via `abctl`, dynamic cricket source and destination, connection `cricket_to_snowflake` | `airbyte/` notes                            |
 | A5  | Venue and team seeds from the real data, with verified coordinates                                            | `seeds/venue_map.csv`, `seeds/team_map.csv` |
 | A6  | Weather partitions script and Airbyte Connector Builder source, connection `weather_to_snowflake`             | `scripts/`, `airbyte/weather_source.yaml`   |
 | A7  | dbt staging layer: `stg_matches`, `stg_deliveries`, `stg_weather_hourly` + source definitions + staging tests | `dbt/ipl_dbt/models/staging/`               |
@@ -247,21 +247,21 @@ SNOWFLAKE_BI_ROLE=BI_ROLE
 AIRBYTE_API_URL=http://host.docker.internal:8000
 AIRBYTE_CLIENT_ID=
 AIRBYTE_CLIENT_SECRET=
-AIRBYTE_CSV_CONNECTION_ID=
+AIRBYTE_CRICKET_CONNECTION_ID=
 AIRBYTE_WEATHER_CONNECTION_ID=
 
-IPL_MATCHES_URL=
-IPL_DELIVERIES_URL=
+CRICKET_MATCHES_FEED_URL=https://cricsheet.org/downloads/ipl_csv2.zip
+WEATHER_API_BASE_URL=https://archive-api.open-meteo.com/v1/archive
 
 GEMINI_API_KEY=
-GEMINI_MODEL=
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 Notes:
 
 - If Snowflake blocks password login for service users because of MFA policy, use key-pair authentication for `AIRBYTE_USER` and `DBT_USER`, and document it in the README.
 - `GEMINI_MODEL`: use a currently available Flash-class model from the official docs.
-- The CSVs are hosted in a public GitHub repo (raw URLs) so Airbyte's File source can read them over HTTPS. Stretch option: S3 bucket and the Airbyte S3 source.
+- The cricket match and ball feed is ingested dynamically from the open Cricsheet release endpoint, allowing incremental synchronization. Weather data is fetched dynamically via the Open-Meteo REST API.
 
 ---
 
@@ -330,13 +330,13 @@ Acceptance: logging in as each user shows only the expected access. `BI_USER` ca
 - Install with `abctl local install`. Get credentials with `abctl local credentials`.
 - Destination: Snowflake, database `IPL_DB`, schema `RAW`, role `AIRBYTE_ROLE`, warehouse `IPL_WH`.
 
-### 8.2 CSV connections
+### 8.2 Dynamic Cricket Feed connections
 
-- Source type: File (CSV). Provider: HTTPS. Two sources: matches and deliveries.
-- Dataset: any IPL 2008 onward dataset that has a matches file and a deliveries (ball-by-ball) file, for example the "IPL Complete Dataset" family on Kaggle. Place both CSVs in a public repo and use the raw URLs.
+- Source type: HTTP Stream / Custom File Feed. Provider: HTTPS. Two logical streams: matches and deliveries.
+- Dataset: Open-source, continuously updated IPL match and ball-by-ball release feed (`CRICKET_MATCHES_FEED_URL`).
 - Stream names: `ipl_matches`, `ipl_deliveries`.
-- Sync mode: Full refresh, overwrite. Schedule: manual (Airflow triggers it).
-- Acceptance: row counts in `RAW` equal row counts in the CSV files.
+- Sync mode: Incremental Append + Deduped (using `match_date` or `match_id` cursor). Schedule: manual (Airflow triggers it).
+- Acceptance: row counts in `RAW` equal row counts in the upstream cricket feed, with metadata column `_airbyte_extracted_at`.
 
 ### 8.3 Weather source (Open-Meteo Archive, custom connector)
 
@@ -375,9 +375,9 @@ Build in Airbyte Connector Builder (declarative manifest), export YAML to `airby
 
 | Task                 | Operator                               | Purpose                                                                            |
 | -------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
-| `check_sources`      | HTTP sensor or `PythonOperator`        | HEAD request on both CSV URLs and an Open-Meteo ping                               |
-| `sync_ipl_csv`       | `AirbyteTriggerSyncOperator`           | Triggers CSV connection                                                            |
-| `sync_weather`       | `AirbyteTriggerSyncOperator`           | Triggers weather connection (runs parallel to CSV)                                 |
+| `check_sources`      | HTTP sensor or `PythonOperator`        | HEAD/ping request on dynamic cricket feed URL and Open-Meteo REST API |
+| `sync_cricket_feed`  | `AirbyteTriggerSyncOperator`           | Triggers dynamic cricket feed connection                                           |
+| `sync_weather`       | `AirbyteTriggerSyncOperator`           | Triggers weather connection (runs parallel to cricket sync)                        |
 | `validate_raw`       | `PythonOperator` or Snowflake operator | Row count above 0 for each raw table, no null `match_id`, weather arrays non-empty |
 | `dbt_deps`           | `BashOperator`                         | `dbt deps`                                                                         |
 | `dbt_seed`           | `BashOperator`                         | `dbt seed`                                                                         |
@@ -388,7 +388,7 @@ Build in Airbyte Connector Builder (declarative manifest), export YAML to `airby
 
 DAG settings: `schedule` daily, `catchup=False`, `retries=2`, `retry_delay` 2 minutes, `on_failure_callback` that logs task, run id and error clearly, tags `["ipl","de-microproject"]`. For the demo the DAG is triggered manually.
 
-Honest design note for the report: the IPL data is historical and static, so a daily schedule re-syncs the same data. The DAG is built so a new season file or a new match date range flows through unchanged, and incremental sync by match date is listed as future work.
+Honest design note for the report: the pipeline is designed for incremental ingestion where each scheduled run checks for new match dates or updated weather windows, appending new rows while dbt handles deduplication.
 
 Acceptance: a full DAG run is green end to end, all task logs readable in the Airflow UI, and a deliberate failure (wrong URL) shows retries and the failure callback.
 
@@ -635,7 +635,7 @@ Both members review the whole report once for consistency.
 
 ## 17. Definition of done
 
-- [ ] Airbyte moves both CSVs and weather data into `IPL_DB.RAW`
+- [ ] Airbyte moves both dynamic cricket feed and weather data incrementally into `IPL_DB.RAW`
 - [ ] Airflow DAG runs green end to end and shows retries on a forced failure
 - [ ] dbt run and dbt test all green, docs and lineage generated
 - [ ] `fct_match` has weather columns for at least 95 percent of matches (list the rest)
