@@ -1,4 +1,5 @@
 import json
+import re
 
 from google import genai
 from google.genai import types
@@ -7,12 +8,24 @@ from bi.config import GEMINI_API_KEY, GEMINI_MODEL, GCP_PROJECT_ID
 
 
 _cache: dict[str, dict[str, str]] = {}
+_client: genai.Client | None = None
 
 
 def get_gemini_client() -> genai.Client:
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is not set.")
-    return genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
+    global _client
+    if _client is None:
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not set.")
+        _client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
+    return _client
+
+
+def _clean_sql(raw_sql: str) -> str:
+    cleaned = raw_sql.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:sql|bigquery)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip().rstrip(";")
 
 
 def generate_sql(question: str, schema_context: str, error_feedback: str = "") -> dict[str, str]:
@@ -42,7 +55,8 @@ Rules:
     if error_feedback:
         prompt += f"\n\nThe previous query failed with this error:\n{error_feedback}\nReturn a corrected query."
 
-    response = get_gemini_client().models.generate_content(
+    client = get_gemini_client()
+    response = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
@@ -52,18 +66,33 @@ Rules:
         ),
     )
 
+    text = (response.text or "").strip()
+    result: dict[str, object] = {}
     try:
-        result = json.loads(response.text or "")
+        result = json.loads(text)
     except (json.JSONDecodeError, TypeError):
-        result = {"sql": "", "explanation": "Gemini returned an invalid JSON response."}
+        # Fallback: regex search for JSON inside potential markdown
+        json_match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group(0))
+            except Exception:
+                result = {"sql": "", "explanation": "Gemini returned an invalid JSON response."}
+        else:
+            result = {"sql": "", "explanation": "Gemini returned an invalid JSON response."}
+
     if not isinstance(result, dict):
         result = {"sql": "", "explanation": "Gemini returned an invalid JSON response."}
 
+    raw_sql = str(result.get("sql") or result.get("query") or "").strip()
+    raw_sql = _clean_sql(raw_sql)
+    explanation = str(result.get("explanation") or result.get("reasoning") or "").strip()
+
     normalized = {
-        "sql": str(result.get("sql", "")).strip(),
-        "explanation": str(result.get("explanation", "")).strip(),
+        "sql": raw_sql,
+        "explanation": explanation,
     }
-    if not error_feedback:
+    if not error_feedback and raw_sql:
         _cache[cache_key] = normalized
     return normalized
 
@@ -77,7 +106,8 @@ Question: {question}
 Rows:
 {query_results_csv}
 """
-    response = get_gemini_client().models.generate_content(
+    client = get_gemini_client()
+    response = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(temperature=0.2),

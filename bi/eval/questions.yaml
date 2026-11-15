@@ -110,11 +110,18 @@
 - id: 11
   question: Which 5 bowlers have the best economy with at least 500 balls bowled?
   gold_sql: |
-    SELECT bowler, ROUND(SAFE_DIVIDE(SUM(runs_conceded) * 6, SUM(balls_bowled)), 2) AS economy,
-      SUM(balls_bowled) AS balls_bowled
-    FROM `{{ project }}.marts.mart_bowler_season`
-    GROUP BY bowler
-    HAVING SUM(balls_bowled) >= 500
+    WITH bowler_stats AS (
+      SELECT bowler,
+        SUM(runs_conceded) AS total_runs,
+        SUM(balls_bowled) AS total_balls
+      FROM `{{ project }}.marts.mart_bowler_season`
+      GROUP BY bowler
+      HAVING SUM(balls_bowled) >= 500
+    )
+    SELECT bowler,
+      ROUND(SAFE_DIVIDE(total_runs * 6, total_balls), 2) AS economy,
+      total_balls AS balls_bowled
+    FROM bowler_stats
     ORDER BY economy ASC
     LIMIT 5
 

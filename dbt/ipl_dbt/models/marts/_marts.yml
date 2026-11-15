@@ -156,6 +156,7 @@ models:
           - not_null
           - accepted_values:
               values: [1, 2]
+              quote: false
       - name: batting_team_id
         description: Team batting in this innings.
         tests:
