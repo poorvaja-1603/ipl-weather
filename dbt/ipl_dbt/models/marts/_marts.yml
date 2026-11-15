@@ -2,90 +2,336 @@ version: 2
 
 models:
   - name: dim_team
-    description: Dimension table of IPL cricket franchises with normalized identifiers.
+    description: One row per normalized IPL franchise.
     columns:
       - name: team_id
-        description: Unique primary key for each IPL team.
-        tests:
-          - unique
-          - not_null
+        description: Stable identifier for the franchise across its name changes.
+        tests: [unique, not_null]
       - name: team_name
-        description: Standardized full team name.
+        description: Current standardized name of the franchise.
       - name: short_name
-        description: Team abbreviation or acronym.
+        description: Short label used for the franchise.
 
   - name: dim_venue
-    description: Dimension table of cricket stadiums with geographic coordinates.
+    description: One row per normalized cricket ground and its location.
     columns:
       - name: venue_id
-        description: Unique primary key for each venue.
-        tests:
-          - unique
-          - not_null
+        description: Stable identifier for the ground.
+        tests: [unique, not_null]
       - name: venue_name
-        description: Standardized official venue name.
+        description: Standardized name of the ground.
       - name: city
-        description: City where the venue is located.
+        description: City where the ground is located.
       - name: country
-        description: Country of the venue.
+        description: Country where the ground is located.
       - name: latitude
-        description: Decimal latitude coordinate of the venue.
+        description: Latitude used to retrieve weather observations.
       - name: longitude
-        description: Decimal longitude coordinate of the venue.
+        description: Longitude used to retrieve weather observations.
 
   - name: fct_match
-    description: Grain of one row per IPL match with enriched weather features, outcome flags, and score summaries.
+    description: One row per IPL match, including innings summaries and venue weather features.
     columns:
       - name: match_id
-        description: Unique match identifier.
-        tests:
-          - unique
-          - not_null
+        description: Unique identifier for the match.
+        tests: [unique, not_null]
       - name: season_year
-        description: Year season was played.
+        description: Calendar year extracted from the match date.
       - name: match_date
-        description: Date match occurred.
+        description: Local calendar date on which the match began.
       - name: venue_id
-        description: Foreign key to dim_venue.
+        description: Ground where the match was played.
         tests:
           - relationships:
               to: ref('dim_venue')
               field: venue_id
+      - name: team1_id
+        description: First team listed in the Cricsheet match information.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: team2_id
+        description: Second team listed in the Cricsheet match information.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: toss_winner_id
+        description: Team that won the toss.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: toss_decision
+        description: Whether the toss winner chose to bat or field.
+        tests:
+          - accepted_values:
+              values: ['bat', 'field']
+      - name: winner_id
+        description: Match winner, including the eliminator winner for a tied match.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: result_type
+        description: Normalized result category, such as runs, wickets, tie, or no result.
+        tests:
+          - accepted_values:
+              values: ['runs', 'wickets', 'tie', 'no_result']
+      - name: result_margin
+        description: Number of runs or wickets in the result, or zero when unavailable.
+      - name: player_of_match
+        description: Cricsheet's player of the match name.
+      - name: dl_applied
+        description: Whether a Duckworth-Lewis method was recorded.
+      - name: first_innings_team_id
+        description: Team that batted in regular innings one.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: first_innings_runs
+        description: Runs scored in regular innings one.
+      - name: first_innings_wickets
+        description: Wickets lost in regular innings one.
+      - name: second_innings_runs
+        description: Runs scored in regular innings two.
+      - name: second_innings_wickets
+        description: Wickets lost in regular innings two.
       - name: chasing_team_won
-        description: Boolean indicating if the team batting second won the match. Null for no result.
+        description: True when the team batting second won, false when it lost, and null when there was no result.
+      - name: avg_temp_c
+        description: Average air temperature in degrees Celsius in the three-hour assumed match window.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -10
+              max_value: 55
+      - name: avg_humidity_pct
+        description: Average relative humidity percentage in the three-hour assumed match window.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_dew_point_c
+        description: Average dew point in degrees Celsius in the three-hour assumed match window.
+      - name: total_precip_mm
+        description: Total precipitation in millimeters in the three-hour assumed match window.
+      - name: avg_wind_kmh
+        description: Average wind speed in kilometers per hour in the three-hour assumed match window.
+      - name: dew_spread_c
+        description: Average air temperature minus average dew point in degrees Celsius.
       - name: humidity_band
-        description: Qualitative humidity classification (low, medium, high).
+        description: Low below 50 percent, medium from 50 through 70 percent, or high above 70 percent.
         tests:
           - accepted_values:
               values: ['low', 'medium', 'high']
       - name: temp_band
-        description: Qualitative temperature classification (cool, warm, hot).
+        description: Cool below 25 degrees Celsius, warm from 25 through 32, or hot above 32.
         tests:
           - accepted_values:
               values: ['cool', 'warm', 'hot']
       - name: dew_risk_band
-        description: Dew probability risk proxy based on dew spread (high, medium, low).
+        description: "Proxy for dew risk based on dew spread: high at 3 degrees or less, medium up to 6, otherwise low."
         tests:
           - accepted_values:
               values: ['high', 'medium', 'low']
 
   - name: fct_innings
-    description: Grain of one row per innings in an IPL match with aggregated batting metrics.
+    description: One row per match and regular innings with batting totals and legal-ball rates.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [match_id, innings_no]
     columns:
       - name: match_id
-        description: Foreign key to fct_match.
+        description: Match containing the innings.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fct_match')
+              field: match_id
       - name: innings_no
-        description: Innings sequence number (1 or 2).
+        description: Regular innings number, either one or two.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2]
+      - name: batting_team_id
+        description: Team batting in this innings.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: bowling_team_id
+        description: Team bowling in this innings.
+        tests:
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: total_runs
+        description: Batter runs plus all recorded extras in the innings.
+      - name: wickets
+        description: Number of recorded wickets in the innings.
+      - name: overs
+        description: Legal deliveries divided by six, rounded to one decimal place.
+      - name: run_rate
+        description: Runs per six legal deliveries.
+      - name: extras
+        description: Total extras conceded in the innings.
 
   - name: mart_venue_stats
-    description: Venue level aggregated statistics including chase and toss conversion win percentages.
+    description: Match counts, first-innings scores, and win percentages by venue.
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "chase_win_pct between 0 and 100"
+      - dbt_utils.expression_is_true:
+          expression: "bat_first_win_pct between 0 and 100"
+      - dbt_utils.expression_is_true:
+          expression: "toss_winner_match_win_pct between 0 and 100"
+    columns:
+      - name: venue_id
+        description: Ground represented by this venue summary.
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('dim_venue')
+              field: venue_id
+      - name: venue_name
+        description: Standardized name of the ground.
+      - name: matches_played
+        description: Matches with a result at the ground.
+      - name: avg_first_innings_runs
+        description: Average runs scored in regular innings one.
+      - name: chase_win_pct
+        description: Percentage of matches with a result won by the team batting second.
+      - name: bat_first_win_pct
+        description: Percentage of matches with a result won by the team batting first.
+      - name: toss_winner_match_win_pct
+        description: Percentage of matches with a result in which the toss-winning team also won the match.
+
   - name: mart_weather_impact
-    description: Weather impact matrix by humidity, temperature, and dew risk bands.
+    description: Match and scoring summaries by humidity, temperature, and dew-risk bands.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [humidity_band, temp_band, dew_risk_band]
+      - dbt_utils.expression_is_true:
+          expression: "chase_win_pct between 0 and 100"
+    columns:
+      - name: humidity_band
+        description: Humidity grouping for the match weather window.
+        tests: [not_null]
+      - name: temp_band
+        description: Temperature grouping for the match weather window.
+        tests: [not_null]
+      - name: dew_risk_band
+        description: Dew-spread proxy grouping for the match weather window.
+        tests: [not_null]
+      - name: matches
+        description: Matches with a result in this weather grouping.
+      - name: avg_first_innings_runs
+        description: Average runs in regular innings one.
+      - name: avg_second_innings_runs
+        description: Average runs in regular innings two.
+      - name: chase_win_pct
+        description: Percentage of matches with a result won by the team batting second.
+
   - name: mart_team_season
-    description: Aggregated performance metrics for each team by season.
+    description: Team match counts, win rate, and average runs scored and conceded by season.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [team_id, season_year]
+      - dbt_utils.expression_is_true:
+          expression: "win_pct between 0 and 100"
+    columns:
+      - name: team_id
+        description: Franchise represented by the seasonal summary.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_team')
+              field: team_id
+      - name: team_name
+        description: Standardized franchise name.
+      - name: season_year
+        description: Calendar year extracted from the season's match dates.
+        tests: [not_null]
+      - name: matches
+        description: Matches with a result played by the team in the season.
+      - name: wins
+        description: Matches won by the team in the season.
+      - name: win_pct
+        description: Wins divided by matches with a result, multiplied by 100.
+      - name: avg_runs_scored
+        description: Average runs scored by the team in an innings.
+      - name: avg_runs_conceded
+        description: Average runs conceded by the team in an innings.
+
   - name: mart_batter_season
-    description: Batting statistics aggregated by batter and season.
+    description: Batter runs, legal balls, strike rate, boundaries, and dismissals by season.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [batter, season_year]
+    columns:
+      - name: batter
+        description: Batter name as provided by Cricsheet.
+        tests: [not_null]
+      - name: season_year
+        description: Calendar year extracted from the match date.
+        tests: [not_null]
+      - name: matches
+        description: Distinct regular-innings matches in which the batter appeared.
+      - name: runs
+        description: Runs credited to the batter.
+      - name: balls_faced
+        description: Legal deliveries faced by the batter.
+      - name: strike_rate
+        description: Batter runs per 100 legal deliveries.
+      - name: fours
+        description: Deliveries with four batter runs.
+      - name: sixes
+        description: Deliveries with six batter runs.
+      - name: dismissals
+        description: Dismissals credited to a bowler, excluding run outs and retired hurt.
+
   - name: mart_bowler_season
-    description: Bowling statistics aggregated by bowler and season.
+    description: Bowler legal deliveries, overs, runs conceded, wickets, and economy by season.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [bowler, season_year]
+    columns:
+      - name: bowler
+        description: Bowler name as provided by Cricsheet.
+        tests: [not_null]
+      - name: season_year
+        description: Calendar year extracted from the match date.
+        tests: [not_null]
+      - name: balls_bowled
+        description: Legal deliveries bowled.
+      - name: overs
+        description: Legal deliveries divided by six, rounded to one decimal place.
+      - name: runs_conceded
+        description: Total runs conceded by the bowler's innings deliveries.
+      - name: wickets
+        description: Bowler-credit wickets, excluding run outs, retired hurt, and obstructing the field.
+      - name: economy
+        description: Runs conceded per six legal deliveries.
+
   - name: mart_batter_weather
-    description: Batter performance metrics partitioned by ambient humidity bands.
+    description: Batter runs and strike rate grouped by humidity band.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [batter, humidity_band]
+    columns:
+      - name: batter
+        description: Batter name as provided by Cricsheet.
+        tests: [not_null]
+      - name: humidity_band
+        description: Humidity grouping for matches in which the batter appeared.
+        tests: [not_null]
+      - name: balls_faced
+        description: Legal deliveries faced in the humidity grouping.
+      - name: runs
+        description: Batter runs scored in the humidity grouping.
+      - name: strike_rate
+        description: Batter runs per 100 legal deliveries in the humidity grouping.

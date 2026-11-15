@@ -11,6 +11,7 @@ secrets/
 abctl.exe
 
 # Python
+.venv/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -36,6 +37,7 @@ wheels/
 *.egg
 
 # dbt
+dbt/ipl_dbt/.user.yml
 dbt/ipl_dbt/target/
 dbt/ipl_dbt/dbt_packages/
 dbt/ipl_dbt/logs/

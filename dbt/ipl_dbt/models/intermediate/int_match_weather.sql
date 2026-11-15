@@ -21,8 +21,8 @@ match_weather_window as (
     from matches m
     inner join weather w
         on m.venue_id = w.venue_id
-        and w.observed_at >= dateadd(hour, 19, m.match_date::timestamp_ntz)
-        and w.observed_at <= dateadd(hour, 22, m.match_date::timestamp_ntz)
+        and w.observed_at >= datetime(m.match_date, time(19, 0, 0))
+        and w.observed_at < datetime_add(datetime(m.match_date, time(19, 0, 0)), interval 3 hour)
 )
 
 select

@@ -5,8 +5,14 @@ with team_matches as (
         team1_id as team_id,
         winner_id,
         result_type,
-        first_innings_runs as runs_scored,
-        second_innings_runs as runs_conceded
+        case
+            when first_innings_team_id = team1_id then first_innings_runs
+            else second_innings_runs
+        end as runs_scored,
+        case
+            when first_innings_team_id = team1_id then second_innings_runs
+            else first_innings_runs
+        end as runs_conceded
     from {{ ref('fct_match') }}
     union all
     select
@@ -15,8 +21,14 @@ with team_matches as (
         team2_id as team_id,
         winner_id,
         result_type,
-        second_innings_runs as runs_scored,
-        first_innings_runs as runs_conceded
+        case
+            when first_innings_team_id = team2_id then first_innings_runs
+            else second_innings_runs
+        end as runs_scored,
+        case
+            when first_innings_team_id = team2_id then second_innings_runs
+            else first_innings_runs
+        end as runs_conceded
     from {{ ref('fct_match') }}
 )
 
@@ -26,7 +38,7 @@ select
     tm.season_year,
     count(case when tm.result_type != 'no_result' then 1 end) as matches,
     count(case when tm.winner_id = tm.team_id then 1 end) as wins,
-    round(100.0 * count(case when tm.winner_id = tm.team_id then 1 end) / nullif(count(case when tm.result_type != 'no_result' then 1 end), 0), 2) as win_pct,
+    round(100.0 * safe_divide(countif(tm.winner_id = tm.team_id), countif(tm.result_type != 'no_result')), 2) as win_pct,
     round(avg(tm.runs_scored), 2) as avg_runs_scored,
     round(avg(tm.runs_conceded), 2) as avg_runs_conceded
 from team_matches tm
