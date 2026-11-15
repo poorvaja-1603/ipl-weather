@@ -10,6 +10,7 @@ secrets/
 !dbt/ipl_dbt/package-lock.yml
 
 # Python
+.venv/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -39,6 +40,7 @@ data/*.zip
 data/temp/
 
 # dbt
+dbt/ipl_dbt/.user.yml
 dbt/ipl_dbt/target/
 dbt/ipl_dbt/dbt_packages/
 dbt/ipl_dbt/logs/

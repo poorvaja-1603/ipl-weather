@@ -1,59 +1,155 @@
 - id: 1
-  question: "Which venue has the highest chase win rate with at least 20 matches?"
-  gold_sql: "SELECT venue_id, venue_name, chase_win_pct FROM IPL_DB.MARTS.MART_VENUE_STATS WHERE matches_played >= 20 ORDER BY chase_win_pct DESC LIMIT 1;"
+  question: Which venue has the highest chase win rate with at least 20 matches?
+  gold_sql: |
+    SELECT venue_id, venue_name, chase_win_pct
+    FROM `{{ project }}.marts.mart_venue_stats`
+    WHERE matches_played >= 20
+    ORDER BY chase_win_pct DESC
+    LIMIT 1
 
 - id: 2
-  question: "Which venue has the highest chase win rate when humidity is high?"
-  gold_sql: "SELECT v.venue_name, ROUND(100.0 * COUNT(CASE WHEN m.chasing_team_won = TRUE THEN 1 END) / NULLIF(COUNT(CASE WHEN m.result_type != 'no_result' THEN 1 END), 0), 2) as high_humidity_chase_win_pct FROM IPL_DB.MARTS.FCT_MATCH m JOIN IPL_DB.MARTS.DIM_VENUE v ON m.venue_id = v.venue_id WHERE m.humidity_band = 'high' GROUP BY v.venue_name HAVING COUNT(CASE WHEN m.result_type != 'no_result' THEN 1 END) >= 10 ORDER BY high_humidity_chase_win_pct DESC LIMIT 1;"
+  question: Which venue has the highest chase win rate when humidity is high?
+  gold_sql: |
+    SELECT v.venue_name,
+      ROUND(100 * SAFE_DIVIDE(COUNTIF(m.chasing_team_won), COUNTIF(m.result_type != 'no_result')), 2) AS chase_win_pct
+    FROM `{{ project }}.marts.fct_match` AS m
+    JOIN `{{ project }}.marts.dim_venue` AS v USING (venue_id)
+    WHERE m.humidity_band = 'high'
+    GROUP BY v.venue_name
+    HAVING COUNTIF(m.result_type != 'no_result') >= 10
+    ORDER BY chase_win_pct DESC
+    LIMIT 1
 
 - id: 3
-  question: "What is the average first innings score for each humidity band?"
-  gold_sql: "SELECT humidity_band, ROUND(AVG(first_innings_runs), 2) as avg_first_inn_runs FROM IPL_DB.MARTS.FCT_MATCH WHERE humidity_band IS NOT NULL GROUP BY humidity_band ORDER BY humidity_band;"
+  question: What is the average first innings score for each humidity band?
+  gold_sql: |
+    SELECT humidity_band, ROUND(AVG(first_innings_runs), 2) AS avg_first_innings_runs
+    FROM `{{ project }}.marts.fct_match`
+    WHERE humidity_band IS NOT NULL
+    GROUP BY humidity_band
+    ORDER BY humidity_band
 
 - id: 4
-  question: "Does high dew risk increase the chance of a successful chase?"
-  gold_sql: "SELECT dew_risk_band, ROUND(100.0 * COUNT(CASE WHEN chasing_team_won = TRUE THEN 1 END) / NULLIF(COUNT(CASE WHEN result_type != 'no_result' THEN 1 END), 0), 2) as chase_win_pct FROM IPL_DB.MARTS.FCT_MATCH WHERE dew_risk_band IS NOT NULL GROUP BY dew_risk_band ORDER BY dew_risk_band;"
+  question: Does high dew risk increase the chance of a successful chase?
+  gold_sql: |
+    SELECT dew_risk_band,
+      ROUND(100 * SAFE_DIVIDE(COUNTIF(chasing_team_won), COUNTIF(result_type != 'no_result')), 2) AS chase_win_pct
+    FROM `{{ project }}.marts.fct_match`
+    WHERE dew_risk_band IS NOT NULL
+    GROUP BY dew_risk_band
+    ORDER BY dew_risk_band
 
 - id: 5
-  question: "Who scored the most runs in each season?"
-  gold_sql: "WITH ranked AS (SELECT batter, season_year, runs, ROW_NUMBER() OVER (PARTITION BY season_year ORDER BY runs DESC) as rn FROM IPL_DB.MARTS.MART_BATTER_SEASON) SELECT season_year, batter, runs FROM ranked WHERE rn = 1 ORDER BY season_year;"
+  question: Who scored the most runs in each season?
+  gold_sql: |
+    WITH ranked AS (
+      SELECT batter, season_year, runs,
+        ROW_NUMBER() OVER (PARTITION BY season_year ORDER BY runs DESC, batter) AS row_num
+      FROM `{{ project }}.marts.mart_batter_season`
+    )
+    SELECT season_year, batter, runs
+    FROM ranked
+    WHERE row_num = 1
+    ORDER BY season_year
 
 - id: 6
-  question: "Which batter has the best strike rate in high humidity with at least 300 balls faced?"
-  gold_sql: "SELECT batter, strike_rate, runs, balls_faced FROM IPL_DB.MARTS.MART_BATTER_WEATHER WHERE humidity_band = 'high' AND balls_faced >= 300 ORDER BY strike_rate DESC LIMIT 1;"
+  question: Which batter has the best strike rate in high humidity with at least 300 balls faced?
+  gold_sql: |
+    SELECT batter, strike_rate, runs, balls_faced
+    FROM `{{ project }}.marts.mart_batter_weather`
+    WHERE humidity_band = 'high' AND balls_faced >= 300
+    ORDER BY strike_rate DESC
+    LIMIT 1
 
 - id: 7
-  question: "What is each team's win percentage at Wankhede Stadium?"
-  gold_sql: "SELECT team_id, COUNT(*) as matches, COUNT(CASE WHEN winner_id = team_id THEN 1 END) as wins, ROUND(100.0 * COUNT(CASE WHEN winner_id = team_id THEN 1 END) / COUNT(*), 2) as win_pct FROM (SELECT team1_id as team_id, winner_id FROM IPL_DB.MARTS.FCT_MATCH WHERE venue_id = 'wankhede' AND result_type != 'no_result' UNION ALL SELECT team2_id as team_id, winner_id FROM IPL_DB.MARTS.FCT_MATCH WHERE venue_id = 'wankhede' AND result_type != 'no_result') GROUP BY team_id ORDER BY win_pct DESC;"
+  question: What is each team's win percentage at Wankhede Stadium?
+  gold_sql: |
+    WITH team_matches AS (
+      SELECT team1_id AS team_id, winner_id
+      FROM `{{ project }}.marts.fct_match`
+      WHERE venue_id = 'wankhede' AND result_type != 'no_result'
+      UNION ALL
+      SELECT team2_id AS team_id, winner_id
+      FROM `{{ project }}.marts.fct_match`
+      WHERE venue_id = 'wankhede' AND result_type != 'no_result'
+    )
+    SELECT team_id, COUNT(*) AS matches, COUNTIF(winner_id = team_id) AS wins,
+      ROUND(100 * SAFE_DIVIDE(COUNTIF(winner_id = team_id), COUNT(*)), 2) AS win_pct
+    FROM team_matches
+    GROUP BY team_id
+    ORDER BY win_pct DESC
 
 - id: 8
-  question: "How has the share of teams choosing to field after winning the toss changed by season?"
-  gold_sql: "SELECT season_year, ROUND(100.0 * COUNT(CASE WHEN toss_decision = 'field' THEN 1 END) / COUNT(*), 2) as field_toss_pct FROM IPL_DB.MARTS.FCT_MATCH GROUP BY season_year ORDER BY season_year;"
+  question: How has the share of teams choosing to field after winning the toss changed by season?
+  gold_sql: |
+    SELECT season_year,
+      ROUND(100 * SAFE_DIVIDE(COUNTIF(toss_decision = 'field'), COUNT(*)), 2) AS field_toss_pct
+    FROM `{{ project }}.marts.fct_match`
+    GROUP BY season_year
+    ORDER BY season_year
 
 - id: 9
-  question: "At which venues does winning the toss matter most?"
-  gold_sql: "SELECT venue_id, venue_name, toss_winner_match_win_pct, matches_played FROM IPL_DB.MARTS.MART_VENUE_STATS WHERE matches_played >= 20 ORDER BY toss_winner_match_win_pct DESC LIMIT 5;"
+  question: At which venues does winning the toss matter most?
+  gold_sql: |
+    SELECT venue_id, venue_name, toss_winner_match_win_pct, matches_played
+    FROM `{{ project }}.marts.mart_venue_stats`
+    WHERE matches_played >= 20
+    ORDER BY toss_winner_match_win_pct DESC
+    LIMIT 5
 
 - id: 10
-  question: "What was the highest team total and what was the weather in that match?"
-  gold_sql: "SELECT m.match_id, m.season_year, i.total_runs as highest_score, m.avg_temp_c, m.avg_humidity_pct, m.dew_spread_c FROM IPL_DB.MARTS.FCT_INNINGS i JOIN IPL_DB.MARTS.FCT_MATCH m ON i.match_id = m.match_id ORDER BY i.total_runs DESC LIMIT 1;"
+  question: What was the highest team total and what was the weather in that match?
+  gold_sql: |
+    SELECT m.match_id, m.season_year, i.total_runs AS highest_score,
+      m.avg_temp_c, m.avg_humidity_pct, m.dew_spread_c
+    FROM `{{ project }}.marts.fct_innings` AS i
+    JOIN `{{ project }}.marts.fct_match` AS m USING (match_id)
+    ORDER BY i.total_runs DESC
+    LIMIT 1
 
 - id: 11
-  question: "Which 5 bowlers have the best economy with at least 500 balls bowled?"
-  gold_sql: "SELECT bowler, ROUND(SUM(runs_conceded) * 6.0 / SUM(balls_bowled), 2) as overall_economy, SUM(balls_bowled) as total_balls FROM IPL_DB.MARTS.MART_BOWLER_SEASON GROUP BY bowler HAVING SUM(balls_bowled) >= 500 ORDER BY overall_economy ASC LIMIT 5;"
+  question: Which 5 bowlers have the best economy with at least 500 balls bowled?
+  gold_sql: |
+    SELECT bowler, ROUND(SAFE_DIVIDE(SUM(runs_conceded) * 6, SUM(balls_bowled)), 2) AS economy,
+      SUM(balls_bowled) AS balls_bowled
+    FROM `{{ project }}.marts.mart_bowler_season`
+    GROUP BY bowler
+    HAVING SUM(balls_bowled) >= 500
+    ORDER BY economy ASC
+    LIMIT 5
 
 - id: 12
-  question: "How many matches had rain recorded and how many were affected by DL?"
-  gold_sql: "SELECT COUNT(CASE WHEN total_precip_mm > 0 THEN 1 END) as matches_with_rain, COUNT(CASE WHEN dl_applied = TRUE THEN 1 END) as dl_affected_matches FROM IPL_DB.MARTS.FCT_MATCH;"
+  question: How many matches had rain recorded and how many were affected by DL?
+  gold_sql: |
+    SELECT COUNTIF(total_precip_mm > 0) AS matches_with_rain,
+      COUNTIF(dl_applied) AS dl_affected_matches
+    FROM `{{ project }}.marts.fct_match`
 
 - id: 13
-  question: "What was the hottest match and who won it?"
-  gold_sql: "SELECT match_id, season_year, match_date, avg_temp_c, winner_id FROM IPL_DB.MARTS.FCT_MATCH WHERE avg_temp_c IS NOT NULL ORDER BY avg_temp_c DESC LIMIT 1;"
+  question: What was the hottest match and who won it?
+  gold_sql: |
+    SELECT match_id, season_year, match_date, avg_temp_c, winner_id
+    FROM `{{ project }}.marts.fct_match`
+    WHERE avg_temp_c IS NOT NULL
+    ORDER BY avg_temp_c DESC
+    LIMIT 1
 
 - id: 14
-  question: "What is Mumbai Indians' win percentage by humidity band?"
-  gold_sql: "SELECT humidity_band, COUNT(*) as matches, COUNT(CASE WHEN winner_id = 'MI' THEN 1 END) as wins, ROUND(100.0 * COUNT(CASE WHEN winner_id = 'MI' THEN 1 END) / COUNT(*), 2) as win_pct FROM IPL_DB.MARTS.FCT_MATCH WHERE (team1_id = 'MI' OR team2_id = 'MI') AND humidity_band IS NOT NULL AND result_type != 'no_result' GROUP BY humidity_band ORDER BY humidity_band;"
+  question: What is Mumbai Indians' win percentage by humidity band?
+  gold_sql: |
+    SELECT humidity_band, COUNT(*) AS matches, COUNTIF(winner_id = 'MI') AS wins,
+      ROUND(100 * SAFE_DIVIDE(COUNTIF(winner_id = 'MI'), COUNT(*)), 2) AS win_pct
+    FROM `{{ project }}.marts.fct_match`
+    WHERE (team1_id = 'MI' OR team2_id = 'MI')
+      AND humidity_band IS NOT NULL AND result_type != 'no_result'
+    GROUP BY humidity_band
+    ORDER BY humidity_band
 
 - id: 15
-  question: "What is the average score in hot matches compared with cool matches?"
-  gold_sql: "SELECT temp_band, ROUND(AVG(first_innings_runs), 2) as avg_first_inn_score FROM IPL_DB.MARTS.FCT_MATCH WHERE temp_band IN ('hot', 'cool') GROUP BY temp_band ORDER BY temp_band;"
+  question: What is the average score in hot matches compared with cool matches?
+  gold_sql: |
+    SELECT temp_band, ROUND(AVG(first_innings_runs), 2) AS avg_first_innings_runs
+    FROM `{{ project }}.marts.fct_match`
+    WHERE temp_band IN ('hot', 'cool')
+    GROUP BY temp_band
+    ORDER BY temp_band

@@ -1,5 +1,8 @@
+import os
+
 import sqlglot
 from sqlglot import exp
+
 
 ALLOWED_MARTS_TABLES = {
     "dim_team",
@@ -11,38 +14,50 @@ ALLOWED_MARTS_TABLES = {
     "mart_team_season",
     "mart_batter_season",
     "mart_bowler_season",
-    "mart_batter_weather"
+    "mart_batter_weather",
 }
+
 
 def validate_and_guard_sql(query_sql: str) -> tuple[bool, str, str]:
     if not query_sql or not query_sql.strip():
         return False, "", "Empty query."
 
     try:
-        parsed = sqlglot.parse(query_sql, read="bigquery")
-    except Exception as e:
-        return False, "", f"SQL syntax error: {str(e)}"
+        statements = sqlglot.parse(query_sql, read="bigquery")
+    except sqlglot.errors.ParseError as error:
+        return False, "", f"SQL syntax error: {error}"
 
-    if len(parsed) != 1:
-        return False, "", "Only a single SQL statement is allowed."
+    if len(statements) != 1 or statements[0] is None:
+        return False, "", "Only one SQL statement is allowed."
 
-    statement = parsed[0]
+    statement = statements[0]
     if not isinstance(statement, (exp.Select, exp.Union)):
-        return False, "", "Only SELECT statements are permitted."
+        return False, "", "Only SELECT queries are allowed."
 
-    tables = statement.find_all(exp.Table)
-    for t in tables:
-        tbl_name = t.name.lower() if t.name else ""
-        db_name = t.db.lower() if t.db else ""
+    project_id = os.getenv("GCP_PROJECT_ID", "").lower()
+    if not project_id:
+        return False, "", "GCP_PROJECT_ID must be set before running BI queries."
 
-        if db_name and db_name not in ("marts", ""):
-            return False, "", f"Only queries against marts dataset are permitted, found: {db_name}"
-        if tbl_name not in ALLOWED_MARTS_TABLES:
-            return False, "", f"Unauthorized table reference: {tbl_name}. Only marts tables are allowed."
+    cte_names = {
+        cte.alias_or_name.lower()
+        for cte in statement.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+    for table in statement.find_all(exp.Table):
+        table_name = (table.name or "").lower()
+        if table_name in cte_names:
+            continue
 
-    has_limit = statement.find(exp.Limit) is not None
-    if not has_limit:
+        dataset_name = (table.db or "").lower()
+        table_project = (table.catalog or "").lower()
+        if dataset_name != "marts":
+            return False, "", f"Only the marts dataset is allowed, found: {dataset_name or 'unqualified table'}"
+        if table_project != project_id:
+            return False, "", "Every table must be fully qualified in the configured BigQuery project."
+        if table_name not in ALLOWED_MARTS_TABLES:
+            return False, "", f"Unauthorized marts table: {table_name}."
+
+    if statement.args.get("limit") is None:
         statement = statement.limit(200)
 
-    safe_sql = statement.sql(dialect="bigquery")
-    return True, safe_sql, ""
+    return True, statement.sql(dialect="bigquery"), ""
