@@ -69,9 +69,15 @@ sample_questions = [
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+clicked_sample = None
 for q in sample_questions:
-    if st.sidebar.button(q, key=f"btn_{q}"):
-        st.session_state.messages.append({"role": "user", "content": q})
+    if st.sidebar.button(q, key=f"btn_{q}", use_container_width=True):
+        clicked_sample = q
+
+st.sidebar.markdown("---")
+if st.sidebar.button("Clear Chat", type="secondary", use_container_width=True):
+    st.session_state.messages = []
+    st.rerun()
 
 st.title("IPL + Weather Impact Conversational BI")
 st.caption("Ask questions about IPL match statistics and ambient weather conditions.")
@@ -81,23 +87,25 @@ schema_ctx = load_schema_context()
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "sql" in msg:
+        if "sql" in msg and msg["sql"]:
             with st.expander("Generated SQL"):
                 st.code(msg["sql"], language="sql")
-        if "table" in msg and msg["table"] is not None:
+        if "table" in msg and msg["table"] is not None and not msg["table"].empty:
             st.dataframe(msg["table"])
         if "chart" in msg and msg["chart"] is not None:
             st.plotly_chart(msg["chart"], use_container_width=True)
 
 user_input = st.chat_input("Ask a question about IPL stats and weather...")
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
+prompt_to_run = clicked_sample or user_input
+
+if prompt_to_run:
+    st.session_state.messages.append({"role": "user", "content": prompt_to_run})
     with st.chat_message("user"):
-        st.markdown(user_input)
+        st.markdown(prompt_to_run)
 
     with st.chat_message("assistant"):
-        with st.spinner("Generating query with Gemini..."):
-            llm_result = generate_sql(user_input, schema_ctx)
+        with st.spinner("Analyzing schema and generating SQL with Gemini in real time..."):
+            llm_result = generate_sql(prompt_to_run, schema_ctx)
             raw_sql = llm_result.get("sql", "").strip()
 
             if not raw_sql:
@@ -111,24 +119,46 @@ if user_input:
                     st.error(err_msg)
                     st.session_state.messages.append({"role": "assistant", "content": err_msg, "sql": raw_sql})
                 else:
+                    df = pd.DataFrame()
+                    query_error = None
                     try:
                         df = run_query(safe_sql)
                     except Exception as first_err:
-                        llm_retry = generate_sql(user_input, schema_ctx, error_feedback=str(first_err))
-                        retry_raw_sql = llm_retry.get("sql", "").strip()
-                        is_safe, safe_sql, guard_err = validate_and_guard_sql(retry_raw_sql)
-                        if is_safe:
-                            df = run_query(safe_sql)
-                        else:
-                            df = pd.DataFrame()
+                        try:
+                            llm_retry = generate_sql(prompt_to_run, schema_ctx, error_feedback=str(first_err))
+                            retry_raw_sql = llm_retry.get("sql", "").strip()
+                            retry_safe, retry_sql, _ = validate_and_guard_sql(retry_raw_sql)
+                            if retry_safe:
+                                safe_sql = retry_sql
+                                df = run_query(safe_sql)
+                            else:
+                                query_error = str(first_err)
+                        except Exception as second_err:
+                            query_error = str(second_err)
 
-                    if df.empty:
-                        reply = "Query returned no results."
-                        st.markdown(reply)
-                        st.session_state.messages.append({"role": "assistant", "content": reply, "sql": safe_sql})
+                    if query_error:
+                        reply = f"Query was generated, but BigQuery reported: {query_error}"
+                        st.info(reply)
+                        with st.expander("Generated SQL"):
+                            st.code(safe_sql, language="sql")
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": reply,
+                            "sql": safe_sql
+                        })
+                    elif df.empty:
+                        reply = "Query returned 0 rows from BigQuery."
+                        st.info(reply)
+                        with st.expander("Generated SQL"):
+                            st.code(safe_sql, language="sql")
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": reply,
+                            "sql": safe_sql
+                        })
                     else:
                         csv_sample = df.head(20).to_csv(index=False)
-                        summary = summarize_results(user_input, csv_sample)
+                        summary = summarize_results(prompt_to_run, csv_sample)
                         st.markdown(summary)
                         with st.expander("Generated SQL"):
                             st.code(safe_sql, language="sql")
@@ -145,3 +175,4 @@ if user_input:
                             "table": df,
                             "chart": fig
                         })
+    st.rerun()

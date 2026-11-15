@@ -10,7 +10,7 @@ except ImportError:
 _cache: dict[str, dict] = {}
 
 def get_gemini_client() -> genai.Client:
-    return genai.Client(api_key=GEMINI_API_KEY)
+    return genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
 
 def generate_sql(question: str, schema_context: str, error_feedback: str = "") -> dict:
     cache_key = question.strip().lower()

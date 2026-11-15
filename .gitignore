@@ -1,13 +1,14 @@
-# Environment variables
+# Environment variables and secrets
 .env
 *.env
 !.env.example
-
-# Service account secrets and credentials
 secrets/
 *.json
-!airbyte/weather_partitions.json
-!dbt/ipl_dbt/package-lock.yml
+!dbt_project.yml
+
+# Binaries
+*.exe
+abctl.exe
 
 # Python
 __pycache__/
@@ -33,10 +34,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Cricsheet raw downloads and temp
-data/*.zip
-data/temp/
 
 # dbt
 dbt/ipl_dbt/target/

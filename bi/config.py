@@ -3,19 +3,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Read from Streamlit secrets if running in cloud, otherwise from os.getenv
 st_secrets = {}
 try:
     import streamlit as st
-    if hasattr(st, "secrets"):
-        st_secrets = st.secrets
+    st_secrets = st.secrets
 except Exception:
-    pass
+    st_secrets = {}
 
-GCP_PROJECT_ID = st_secrets.get("GCP_PROJECT_ID", os.getenv("GCP_PROJECT_ID", "ipl-weather-analytics"))
-BQ_LOCATION = st_secrets.get("BQ_LOCATION", os.getenv("BQ_LOCATION", "US"))
-GCP_KEYFILE_BI = st_secrets.get("GCP_KEYFILE_BI", os.getenv("GCP_KEYFILE_BI", "./secrets/bi-sa.json"))
-BQ_MAX_BYTES_BILLED = int(st_secrets.get("BQ_MAX_BYTES_BILLED", os.getenv("BQ_MAX_BYTES_BILLED", "1000000000")))
+def get_conf(key: str, default: str = "") -> str:
+    try:
+        if st_secrets and key in st_secrets:
+            return str(st_secrets[key])
+    except Exception:
+        pass
+    return os.getenv(key, default)
 
-GEMINI_API_KEY = st_secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
-GEMINI_MODEL = st_secrets.get("GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+GCP_PROJECT_ID = get_conf("GCP_PROJECT_ID", "ipl-weather-analytics")
+BQ_LOCATION = get_conf("BQ_LOCATION", "US")
+GCP_KEYFILE_BI = get_conf("GCP_KEYFILE_BI", "./secrets/bi-sa.json")
+BQ_MAX_BYTES_BILLED = int(get_conf("BQ_MAX_BYTES_BILLED", "1000000000"))
+
+GEMINI_API_KEY = get_conf("GEMINI_API_KEY", "")
+GEMINI_MODEL = get_conf("GEMINI_MODEL", "gemini-2.5-flash")
