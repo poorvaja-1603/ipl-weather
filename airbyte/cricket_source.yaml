@@ -1,0 +1,33 @@
+version: 0.81.0
+type: DeclarativeSource
+spec:
+  type: Spec
+  connection_specification:
+    $schema: "http://json-schema.org/draft-07/schema#"
+    type: "object"
+    required: []
+    properties: {}
+check:
+  type: CheckStream
+  stream_names:
+    - matches
+streams:
+  - type: DeclarativeStream
+    name: matches
+    primary_key:
+      - id
+    retriever:
+      type: SimpleRetriever
+      requester:
+        type: HttpRequester
+        url_base: https://api.cricapi.com/v1/
+        path: matches
+        http_method: GET
+        request_parameters:
+          apikey: "078082a9-0b47-430d-bf9d-c5b6c3ab31de"
+      record_selector:
+        type: RecordSelector
+        extractor:
+          type: DpathExtractor
+          field_path:
+            - data

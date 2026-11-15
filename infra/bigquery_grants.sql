@@ -25,4 +25,4 @@ TO "serviceAccount:dbt-sa@PROJECT.iam.gserviceaccount.com";
 
 -- 3. BI Service Account: Read-only Data Viewer strictly on marts
 GRANT `roles/bigquery.dataViewer` ON SCHEMA `PROJECT.marts`
-TO "serviceAccount:bi-sa@PROJECT.iam.gserviceaccount.com";
+TO "serviceAccount:streamlit-bi-sa@PROJECT.iam.gserviceaccount.com";
