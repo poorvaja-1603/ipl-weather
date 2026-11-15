@@ -24,4 +24,4 @@ GCP_KEYFILE_BI = get_conf("GCP_KEYFILE_BI", "./secrets/bi-sa.json")
 BQ_MAX_BYTES_BILLED = int(get_conf("BQ_MAX_BYTES_BILLED", "1000000000"))
 
 GEMINI_API_KEY = get_conf("GEMINI_API_KEY", "")
-GEMINI_MODEL = get_conf("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = get_conf("GEMINI_MODEL", "gemini-flash-latest")
