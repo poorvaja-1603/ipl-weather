@@ -1,7 +1,11 @@
 import json
 from google import genai
 from google.genai import types
-from bi.config import GEMINI_API_KEY, GEMINI_MODEL
+
+try:
+    from bi.config import GEMINI_API_KEY, GEMINI_MODEL, GCP_PROJECT_ID
+except ImportError:
+    from config import GEMINI_API_KEY, GEMINI_MODEL, GCP_PROJECT_ID
 
 _cache: dict[str, dict] = {}
 
@@ -14,21 +18,22 @@ def generate_sql(question: str, schema_context: str, error_feedback: str = "") -
         return _cache[cache_key]
 
     system_instruction = f"""
-You are an expert Snowflake SQL data analyst for an IPL and Weather data warehouse.
-Your role is to translate English user questions into Snowflake SQL queries.
+You are an expert Google BigQuery SQL data analyst for an IPL and Weather data warehouse.
+Your role is to translate English user questions into BigQuery standard SQL queries.
 
 Database context:
 {schema_context}
 
 Rules:
-1. Snowflake SQL dialect only.
-2. Use only tables listed in the schema context, and always use fully qualified names: IPL_DB.MARTS.<TABLE_NAME>.
+1. BigQuery GoogleSQL (Standard SQL) dialect only.
+2. Use only tables listed in the schema context, using dataset prefix: `{GCP_PROJECT_ID}.marts.<TABLE_NAME>` or `marts.<TABLE_NAME>`.
 3. Percentages are stored as 0 to 100 values (e.g., 55.4 for 55.4%).
 4. Always exclude 'no_result' matches when computing win rates (prefer precomputed marts when available).
 5. When ranking or finding best/worst records, add a sample size filter (e.g. at least 20 matches for venues, at least 300 balls for batters) unless specified otherwise.
-6. Never invent columns or tables.
-7. Return your response ONLY as valid JSON with two fields:
-   "sql": "<Snowflake SQL query string or empty string if question cannot be answered>",
+6. Use SAFE_DIVIDE for division calculations.
+7. Never invent columns or tables.
+8. Return your response ONLY as valid JSON with two fields:
+   "sql": "<BigQuery SQL query string or empty string if question cannot be answered>",
    "explanation": "<Brief explanation of what the query calculates or reason if unable to answer>"
 """
 

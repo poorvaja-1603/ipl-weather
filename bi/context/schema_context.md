@@ -1,61 +1,61 @@
-# IPL Marts Schema Context
+# IPL Marts Schema Context (Google BigQuery)
 
-## Available Tables in `IPL_DB.MARTS`
+## Available Tables in `marts` Dataset
 
-### 1. `IPL_DB.MARTS.DIM_TEAM`
-- **team_id** (VARCHAR): Primary key for each IPL team.
-- **team_name** (VARCHAR): Normalized official team name.
-- **short_name** (VARCHAR): Short team abbreviation.
+### 1. `marts.dim_team`
+- **team_id** (STRING): Primary key for each IPL team (e.g. 'CSK', 'MI', 'RCB').
+- **team_name** (STRING): Normalized official team name.
+- **short_name** (STRING): Short team abbreviation.
 
-### 2. `IPL_DB.MARTS.DIM_VENUE`
-- **venue_id** (VARCHAR): Primary key for each venue.
-- **venue_name** (VARCHAR): Standardized official venue name.
-- **city** (VARCHAR): City location.
-- **country** (VARCHAR): Country location.
-- **latitude** (FLOAT): Latitude coordinate.
-- **longitude** (FLOAT): Longitude coordinate.
+### 2. `marts.dim_venue`
+- **venue_id** (STRING): Primary key for each venue (e.g. 'wankhede', 'chepauk', 'eden_gardens').
+- **venue_name** (STRING): Standardized official venue name.
+- **city** (STRING): City location.
+- **country** (STRING): Country location.
+- **latitude** (FLOAT64): Latitude coordinate.
+- **longitude** (FLOAT64): Longitude coordinate.
 
-### 3. `IPL_DB.MARTS.FCT_MATCH`
-- **match_id** (INT): Unique match ID.
-- **season_year** (INT): Year of IPL season.
-- **match_date** (DATE): Date of match.
-- **venue_id** (VARCHAR): Foreign key to dim_venue.
-- **team1_id**, **team2_id** (VARCHAR): Competing teams.
-- **toss_winner_id** (VARCHAR), **toss_decision** ('bat'/'field').
-- **winner_id** (VARCHAR): Winning team ID.
+### 3. `marts.fct_match`
+- **match_id** (INT64): Unique match ID.
+- **season_year** (INT64): Year of IPL season.
+- **match_date** (DATE): Date match occurred.
+- **venue_id** (STRING): Foreign key to dim_venue.
+- **team1_id**, **team2_id** (STRING): Competing teams.
+- **toss_winner_id** (STRING), **toss_decision** ('bat'/'field').
+- **winner_id** (STRING): Winning team ID.
 - **result_type** ('runs', 'wickets', 'tie', 'no_result').
-- **result_margin** (INT).
-- **first_innings_runs**, **second_innings_runs** (INT).
-- **chasing_team_won** (BOOLEAN): True if chasing team won, null for no_result.
-- **avg_temp_c** (FLOAT): Match average temperature in Celsius.
-- **avg_humidity_pct** (FLOAT): Match average relative humidity (0-100).
-- **avg_dew_point_c** (FLOAT): Match average dew point in Celsius.
-- **dew_spread_c** (FLOAT): Temperature minus dew point.
+- **result_margin** (INT64).
+- **first_innings_runs**, **second_innings_runs** (INT64).
+- **chasing_team_won** (BOOL): True if chasing team won, null for no_result.
+- **avg_temp_c** (FLOAT64): Match average temperature in Celsius.
+- **avg_humidity_pct** (FLOAT64): Match average relative humidity (0-100).
+- **avg_dew_point_c** (FLOAT64): Match average dew point in Celsius.
+- **dew_spread_c** (FLOAT64): Temperature minus dew point.
 - **humidity_band** ('low', 'medium', 'high').
 - **temp_band** ('cool', 'warm', 'hot').
 - **dew_risk_band** ('high', 'medium', 'low').
 
-### 4. `IPL_DB.MARTS.FCT_INNINGS`
-- **match_id** (INT), **innings_no** (INT), **batting_team_id** (VARCHAR), **bowling_team_id** (VARCHAR).
-- **total_runs** (INT), **wickets** (INT), **overs** (FLOAT), **run_rate** (FLOAT), **extras** (INT).
+### 4. `marts.fct_innings`
+- **match_id** (INT64), **innings_no** (INT64), **batting_team_id** (STRING), **bowling_team_id** (STRING).
+- **total_runs** (INT64), **wickets** (INT64), **overs** (FLOAT64), **run_rate** (FLOAT64), **extras** (INT64).
 
-### 5. `IPL_DB.MARTS.MART_VENUE_STATS`
-- **venue_id** (VARCHAR), **venue_name** (VARCHAR), **matches_played** (INT).
-- **avg_first_innings_runs** (FLOAT), **chase_win_pct** (FLOAT), **bat_first_win_pct** (FLOAT), **toss_winner_match_win_pct** (FLOAT).
+### 5. `marts.mart_venue_stats`
+- **venue_id** (STRING), **venue_name** (STRING), **matches_played** (INT64).
+- **avg_first_innings_runs** (FLOAT64), **chase_win_pct** (FLOAT64), **bat_first_win_pct** (FLOAT64), **toss_winner_match_win_pct** (FLOAT64).
 
-### 6. `IPL_DB.MARTS.MART_WEATHER_IMPACT`
-- **humidity_band** (VARCHAR), **temp_band** (VARCHAR), **dew_risk_band** (VARCHAR).
-- **matches** (INT), **avg_first_innings_runs** (FLOAT), **avg_second_innings_runs** (FLOAT), **chase_win_pct** (FLOAT).
+### 6. `marts.mart_weather_impact`
+- **humidity_band** (STRING), **temp_band** (STRING), **dew_risk_band** (STRING).
+- **matches** (INT64), **avg_first_innings_runs** (FLOAT64), **avg_second_innings_runs** (FLOAT64), **chase_win_pct** (FLOAT64).
 
-### 7. `IPL_DB.MARTS.MART_TEAM_SEASON`
-- **team_id** (VARCHAR), **team_name** (VARCHAR), **season_year** (INT).
-- **matches** (INT), **wins** (INT), **win_pct** (FLOAT), **avg_runs_scored** (FLOAT), **avg_runs_conceded** (FLOAT).
+### 7. `marts.mart_team_season`
+- **team_id** (STRING), **team_name** (STRING), **season_year** (INT64).
+- **matches** (INT64), **wins** (INT64), **win_pct** (FLOAT64), **avg_runs_scored** (FLOAT64), **avg_runs_conceded** (FLOAT64).
 
-### 8. `IPL_DB.MARTS.MART_BATTER_SEASON`
-- **batter** (VARCHAR), **season_year** (INT), **matches** (INT), **runs** (INT), **balls_faced** (INT), **strike_rate** (FLOAT), **fours** (INT), **sixes** (INT), **dismissals** (INT).
+### 8. `marts.mart_batter_season`
+- **batter** (STRING), **season_year** (INT64), **matches** (INT64), **runs** (INT64), **balls_faced** (INT64), **strike_rate** (FLOAT64), **fours** (INT64), **sixes** (INT64), **dismissals** (INT64).
 
-### 9. `IPL_DB.MARTS.MART_BOWLER_SEASON`
-- **bowler** (VARCHAR), **season_year** (INT), **balls_bowled** (INT), **overs** (FLOAT), **runs_conceded** (INT), **wickets** (INT), **economy** (FLOAT).
+### 9. `marts.mart_bowler_season`
+- **bowler** (STRING), **season_year** (INT64), **balls_bowled** (INT64), **overs** (FLOAT64), **runs_conceded** (INT64), **wickets** (INT64), **economy** (FLOAT64).
 
-### 10. `IPL_DB.MARTS.MART_BATTER_WEATHER`
-- **batter** (VARCHAR), **humidity_band** (VARCHAR), **balls_faced** (INT), **runs** (INT), **strike_rate** (FLOAT).
+### 10. `marts.mart_batter_weather`
+- **batter** (STRING), **humidity_band** (STRING), **balls_faced** (INT64), **runs** (INT64), **strike_rate** (FLOAT64).

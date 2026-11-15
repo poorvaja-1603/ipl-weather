@@ -1,10 +1,26 @@
+import sys
+from pathlib import Path
 import streamlit as st
 import pandas as pd
-from pathlib import Path
-from bi.db import run_query
-from bi.sql_guard import validate_and_guard_sql
-from bi.llm import generate_sql, summarize_results
-from bi.charts import create_chart
+
+# Add project root and bi directory to sys.path for Streamlit Cloud compatibility
+root_dir = Path(__file__).resolve().parent.parent
+bi_dir = Path(__file__).resolve().parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+if str(bi_dir) not in sys.path:
+    sys.path.insert(0, str(bi_dir))
+
+try:
+    from bi.db import run_query
+    from bi.sql_guard import validate_and_guard_sql
+    from bi.llm import generate_sql, summarize_results
+    from bi.charts import create_chart
+except ImportError:
+    from db import run_query
+    from sql_guard import validate_and_guard_sql
+    from llm import generate_sql, summarize_results
+    from charts import create_chart
 
 st.set_page_config(page_title="IPL + Weather Impact BI", layout="wide")
 
