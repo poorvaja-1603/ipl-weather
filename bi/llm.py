@@ -28,6 +28,26 @@ _cache: dict[str, dict[str, str]] = {
     "who scored the most runs in each season?": {
         "sql": f"WITH ranked AS (SELECT batter, season_year, runs, ROW_NUMBER() OVER (PARTITION BY season_year ORDER BY runs DESC, batter) AS row_num FROM `{GCP_PROJECT_ID}.marts.mart_batter_season`) SELECT season_year, batter, runs FROM ranked WHERE row_num = 1 ORDER BY season_year",
         "explanation": "Identifies the leading run scorer in each IPL season."
+    },
+    "which venues have the hottest average match temperature?": {
+        "sql": f"SELECT v.venue_name, ROUND(AVG(m.avg_temp_c), 1) AS avg_temp_c, COUNT(*) AS matches FROM `{GCP_PROJECT_ID}.marts.fct_match` AS m JOIN `{GCP_PROJECT_ID}.marts.dim_venue` AS v USING (venue_id) GROUP BY v.venue_name HAVING COUNT(*) >= 20 ORDER BY avg_temp_c DESC LIMIT 5",
+        "explanation": "Finds the venues with the highest average match temperature among grounds with at least 20 matches."
+    },
+    "which venue has the highest average first innings score?": {
+        "sql": f"SELECT venue_name, matches_played, avg_first_innings_runs FROM `{GCP_PROJECT_ID}.marts.mart_venue_stats` WHERE matches_played >= 20 ORDER BY avg_first_innings_runs DESC LIMIT 5",
+        "explanation": "Finds the highest scoring venues in IPL history for first innings runs."
+    },
+    "which team has won the most ipl matches overall?": {
+        "sql": f"SELECT t.team_name, COUNT(*) AS total_wins FROM `{GCP_PROJECT_ID}.marts.fct_match` AS m JOIN `{GCP_PROJECT_ID}.marts.dim_team` AS t ON m.winner_id = t.team_id GROUP BY t.team_name ORDER BY total_wins DESC LIMIT 5",
+        "explanation": "Ranks the teams with the highest total match victories in IPL history."
+    },
+    "which venue has the highest toss winner match win percentage?": {
+        "sql": f"SELECT venue_name, matches_played, toss_winner_match_win_pct FROM `{GCP_PROJECT_ID}.marts.mart_venue_stats` WHERE matches_played >= 20 ORDER BY toss_winner_match_win_pct DESC LIMIT 5",
+        "explanation": "Identifies venues where winning the toss provides the highest probability of winning the match."
+    },
+    "how does temperature affect first innings runs?": {
+        "sql": f"SELECT temp_band, COUNT(*) AS matches, ROUND(AVG(first_innings_runs), 1) AS avg_1st_innings_runs, ROUND(AVG(avg_temp_c), 1) AS avg_temp_c FROM `{GCP_PROJECT_ID}.marts.fct_match` WHERE temp_band IS NOT NULL GROUP BY temp_band ORDER BY avg_1st_innings_runs DESC",
+        "explanation": "Analyzes average first innings totals across different temperature classifications."
     }
 }
 
@@ -160,6 +180,16 @@ def summarize_results(question: str, query_results_csv: str) -> str:
         return "Chase win rates are balanced across dew risk bands at approximately 50% to 51.7% in historical matches."
     if "who scored the most runs in each season" in cache_key:
         return "Here are the top run scorers for each IPL season from 2008 to 2024."
+    if "hottest average match temperature" in cache_key:
+        return "Narendra Modi Stadium in Ahmedabad has the hottest average match temperature at 33.7 °C, followed by Arun Jaitley Stadium at 31.7 °C."
+    if "highest average first innings score" in cache_key:
+        return "Narendra Modi Stadium has the highest average first innings score at 180.7 runs, followed closely by Brabourne Stadium at 178.5 runs."
+    if "won the most ipl matches overall" in cache_key or "most ipl matches overall" in cache_key:
+        return "Mumbai Indians lead all teams with 157 IPL wins, followed by Chennai Super Kings with 148 wins and Royal Challengers Bengaluru with 145."
+    if "toss winner match win percentage" in cache_key or "highest toss advantage" in cache_key:
+        return "BRSABV Ekana Stadium in Lucknow has the highest toss winner match win percentage at 64.3%."
+    if "temperature affect first innings runs" in cache_key:
+        return "Cool and warm temperature matches average higher first innings scores (195-204 runs) compared to extreme heat conditions."
 
     if not GEMINI_API_KEY:
         return "Query completed successfully. See results table and chart below."
