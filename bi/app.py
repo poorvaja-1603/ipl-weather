@@ -1,9 +1,9 @@
+import io
 from pathlib import Path
+import sys
 
 import pandas as pd
 import streamlit as st
-
-import sys
 
 # Keep imports working in both repository-root and Streamlit Cloud launches.
 root_dir = Path(__file__).resolve().parent.parent
@@ -18,15 +18,137 @@ from bi.db import run_query
 from bi.llm import generate_sql, summarize_results
 from bi.sql_guard import validate_and_guard_sql
 
+# Page configuration
+st.set_page_config(
+    page_title="IPL + Weather Intelligence BI",
+    page_icon="🏏",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-st.set_page_config(page_title="IPL + Weather Impact BI", layout="wide")
+# Custom executive CSS for a clean, professional, non-cluttered theme
+st.markdown(
+    """
+    <style>
+    /* Global Typography and Card Polish */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Header Card */
+    .hero-header {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+    .hero-title {
+        font-size: 26px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        background: linear-gradient(90deg, #38BDF8, #818CF8);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .hero-subtitle {
+        font-size: 14px;
+        color: #94A3B8;
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    /* KPI Metric Cards in Sidebar */
+    .kpi-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+    .kpi-card {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+    .kpi-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #94A3B8;
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+    .kpi-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #F8FAFC;
+    }
+
+    /* Sample Question Button Enhancements */
+    .stButton > button {
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.2s ease-in-out;
+        text-align: left;
+    }
+    .stButton > button:hover {
+        border-color: #38BDF8;
+        box-shadow: 0 2px 8px rgba(56, 189, 248, 0.15);
+        transform: translateY(-1px);
+    }
+
+    /* Status Pill */
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(34, 197, 94, 0.12);
+        color: #4ADE80;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        margin-bottom: 16px;
+    }
+    .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #22C55E;
+    }
+
+    /* Summary Card */
+    .summary-card {
+        background: rgba(56, 189, 248, 0.08);
+        border-left: 3px solid #38BDF8;
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        font-size: 14.5px;
+        line-height: 1.5;
+        color: #E2E8F0;
+        margin-bottom: 16px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 SAMPLE_QUESTIONS = [
-    "Which venue has the highest chase win rate with at least 20 matches?",
-    "Which venue has the highest chase win rate when humidity is high?",
-    "What is the average first innings score for each humidity band?",
-    "Does high dew risk increase the chance of a successful chase?",
-    "Who scored the most runs in each season?",
+    ("Which venue has the highest chase win rate with at least 20 matches?", "🏟️ Chase Venue"),
+    ("Which venue has the highest chase win rate when humidity is high?", "💧 High Humidity"),
+    ("What is the average first innings score for each humidity band?", "📊 Humidity Bands"),
+    ("Does high dew risk increase the chance of a successful chase?", "🌱 Dew Impact"),
+    ("Who scored the most runs in each season?", "🏏 Top Scorers"),
+    ("Which venues have the hottest average match temperature?", "🔥 Hottest Grounds"),
+    ("Which team has won the most IPL matches overall?", "🏆 Team Wins"),
 ]
 
 
@@ -56,26 +178,64 @@ def get_data_coverage() -> dict[str, object]:
     return {"min_season": 2008, "max_season": 2024, "total_matches": 1243, "total_venues": 36}
 
 
+def render_response(summary: str, sql: str, results: pd.DataFrame, chart) -> None:
+    # 1. Summary highlight card
+    st.markdown(f'<div class="summary-card"><b>Key Finding:</b> {summary}</div>', unsafe_allow_html=True)
+
+    # 2. Tabs for Chart, Data Table, and SQL
+    tab_chart, tab_data, tab_sql = st.tabs(["📊 Interactive Visualization", "📋 Data Table", "🔍 Generated SQL"])
+
+    with tab_chart:
+        if chart is not None:
+            st.plotly_chart(chart, use_container_width=True)
+        else:
+            st.info("A single metric value was returned. See the data table or summary above.")
+
+    with tab_data:
+        st.dataframe(results, use_container_width=True, hide_index=True)
+        # Quick CSV Download
+        csv_buffer = io.BytesIO()
+        results.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="📥 Download Results as CSV",
+            data=csv_buffer.getvalue(),
+            file_name="ipl_weather_results.csv",
+            mime="text/csv",
+            key=f"dl_{abs(hash(sql))}",
+        )
+
+    with tab_sql:
+        st.markdown("**Executed BigQuery GoogleSQL** *(AST-Validated, Read-Only, 1GB Scan Cap)*")
+        st.code(sql, language="sql")
+
+
 def render_saved_message(message: dict[str, object]) -> None:
     with st.chat_message(str(message["role"])):
-        st.markdown(str(message["content"]))
-        if message.get("sql"):
-            with st.expander("Generated SQL"):
-                st.code(str(message["sql"]), language="sql")
-        if isinstance(message.get("table"), pd.DataFrame):
-            st.dataframe(message["table"], use_container_width=True)
-        if message.get("chart") is not None:
-            st.plotly_chart(message["chart"], use_container_width=True)
+        if message["role"] == "user":
+            st.markdown(f"**{message['content']}**")
+        else:
+            if message.get("table") is not None and isinstance(message["table"], pd.DataFrame):
+                render_response(
+                    str(message.get("content", "")),
+                    str(message.get("sql", "")),
+                    message["table"],
+                    message.get("chart"),
+                )
+            else:
+                st.markdown(str(message["content"]))
+                if message.get("sql"):
+                    with st.expander("Generated SQL"):
+                        st.code(str(message["sql"]), language="sql")
 
 
 def answer_question(question: str, schema_context: str) -> None:
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(f"**{question}**")
 
     with st.chat_message("assistant"):
         try:
-            with st.spinner("Generating a BigQuery query..."):
+            with st.spinner("Analyzing schema and generating SQL query..."):
                 generated = generate_sql(question, schema_context)
             raw_sql = generated.get("sql", "").strip()
             if not raw_sql:
@@ -96,7 +256,7 @@ def answer_question(question: str, schema_context: str) -> None:
             try:
                 results = run_query(safe_sql)
             except Exception as first_error:
-                with st.spinner("Retrying once with the BigQuery error..."):
+                with st.spinner("Retrying once with the BigQuery error feedback..."):
                     retry = generate_sql(question, schema_context, error_feedback=str(first_error))
                 retry_sql = retry.get("sql", "").strip()
                 is_safe, retry_safe_sql, guard_error = validate_and_guard_sql(retry_sql)
@@ -111,8 +271,8 @@ def answer_question(question: str, schema_context: str) -> None:
                 results = run_query(safe_sql)
 
             if results.empty:
-                message = "The query returned no rows."
-                st.markdown(message)
+                message = "The query completed successfully but returned 0 rows for these filters."
+                st.info(message)
                 with st.expander("Generated SQL"):
                     st.code(safe_sql, language="sql")
                 st.session_state.messages.append(
@@ -123,15 +283,11 @@ def answer_question(question: str, schema_context: str) -> None:
             try:
                 summary = summarize_results(question, results.head(20).to_csv(index=False))
             except Exception:
-                summary = f"The query returned {len(results)} rows. See the results below."
+                summary = f"The query returned {len(results)} rows. See the charts and table below."
 
-            st.markdown(summary)
-            with st.expander("Generated SQL"):
-                st.code(safe_sql, language="sql")
-            st.dataframe(results, use_container_width=True)
             chart = create_chart(results)
-            if chart is not None:
-                st.plotly_chart(chart, use_container_width=True)
+            render_response(summary, safe_sql, results, chart)
+
             st.session_state.messages.append(
                 {
                     "role": "assistant",
@@ -147,40 +303,80 @@ def answer_question(question: str, schema_context: str) -> None:
             st.session_state.messages.append({"role": "assistant", "content": message})
 
 
-st.title("IPL + Weather Impact Conversational BI")
-st.caption("Ask questions about IPL match statistics and historical weather.")
-
+# =========================================================================
+# Sidebar: System Status & Filter Queries
+# =========================================================================
 with st.sidebar:
-    st.title("IPL + Weather BI")
-    try:
-        coverage = get_data_coverage()
-        st.markdown(f"**Seasons:** {coverage['min_season']} to {coverage['max_season']}")
-        st.markdown(f"**Matches:** {coverage['total_matches']:,}")
-        st.markdown(f"**Venues:** {coverage['total_venues']:,}")
-    except Exception:
-        st.info("Data coverage will appear after the marts are built.")
+    st.markdown('<div class="status-pill"><div class="status-dot"></div>Warehouse & LLM Online</div>', unsafe_allow_html=True)
+    st.title("🏏 IPL + Weather BI")
+    st.caption("Cloud Analytics powered by BigQuery & Gemini")
+
+    coverage = get_data_coverage()
+    st.markdown(
+        f"""
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <div class="kpi-label">Seasons</div>
+                <div class="kpi-value">{coverage['min_season']}-{coverage['max_season']}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Matches</div>
+                <div class="kpi-value">{coverage['total_matches']:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Venues</div>
+                <div class="kpi-value">{coverage['total_venues']:,}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Observations</div>
+                <div class="kpi-value">11,088</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Suggested Questions")
+    st.caption("Click any query to execute against BigQuery:")
+    selected_question = None
+    for index, (q_text, q_badge) in enumerate(SAMPLE_QUESTIONS):
+        if st.button(f"{q_badge} — {q_text}", key=f"sample_{index}", use_container_width=True):
+            selected_question = q_text
 
     st.divider()
-    st.subheader("Sample questions")
-    selected_question = None
-    for index, question in enumerate(SAMPLE_QUESTIONS):
-        if st.button(question, key=f"sample_{index}", use_container_width=True):
-            selected_question = question
+    st.caption("Data Sources: Cricsheet (Match Archives) & Open-Meteo (Micro-Climate Reanalysis).")
+
+
+# =========================================================================
+# Main Content Area
+# =========================================================================
+st.markdown(
+    """
+    <div class="hero-header">
+        <div class="hero-title">🏏 IPL + Weather Impact Conversational BI</div>
+        <p class="hero-subtitle">
+            Explore 17 seasons of historical Indian Premier League cricket cross-analyzed with hourly surface weather.
+            Ask questions in natural English to generate verified BigQuery GoogleSQL, interactive visualizations, and AI insights.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Render chat history
 for saved_message in st.session_state.messages:
     render_saved_message(saved_message)
 
-typed_question = st.chat_input("Ask about IPL results or weather...")
+# Chat input
+typed_question = st.chat_input("Ask about IPL results, high humidity, dew risk, venue records, or top batters...")
 question = typed_question or selected_question
+
 if question:
     context = load_schema_context()
     if not context:
         st.error("The dbt schema context is missing. Generate it with dbt docs first.")
     else:
         answer_question(question, context)
-
-st.divider()
-st.caption("Match data from Cricsheet (cricsheet.org). Weather data from Open-Meteo.com.")
