@@ -99,12 +99,13 @@ Rules:
 1. Use only the tables and columns in the schema above.
 2. Fully qualify every table with `{GCP_PROJECT_ID}.marts` or the exact project and dataset shown in the context.
 3. Use BigQuery GoogleSQL syntax and SAFE_DIVIDE for ratios.
-4. Percentages are stored from 0 to 100.
-5. Exclude result_type = 'no_result' from win-rate denominators.
-6. Use the precomputed marts for common rates when available.
-7. For rankings, require a useful sample such as 20 venue matches or 300 batter balls, unless the user asks otherwise.
-8. If the schema cannot answer the question, return an empty sql and explain why.
-9. Return only a JSON object with string fields sql and explanation.
+4. Always wrap all averages, win rates, and percentages in ROUND(..., 1) or ROUND(..., 2). Never return raw unrounded floats with long decimal digits.
+5. Percentages are stored from 0 to 100.
+6. Exclude result_type = 'no_result' from win-rate denominators.
+7. Use the precomputed marts for common rates when available.
+8. For rankings, require a useful sample such as 20 venue matches or 300 batter balls, unless the user asks otherwise.
+9. If the schema cannot answer the question, return an empty sql and explain why.
+10. Return only a JSON object with string fields sql and explanation.
 """
 
     prompt = f"User question: {question}"
@@ -195,8 +196,12 @@ def summarize_results(question: str, query_results_csv: str) -> str:
         return "Query completed successfully. See results table and chart below."
 
     prompt = f"""
-Answer this question in one direct sentence using only the rows provided.
-If the rows do not support an answer, say so. Do not add facts that are not in the data.
+Provide a crisp, professional 1-2 sentence executive highlight of the top finding or leading result from these query results.
+CRITICAL FORMATTING RULES:
+1. Do NOT dump all rows or list out every item like '1) ... 2) ...'.
+2. Mention only the top 1 or 2 leaders or the overall pattern (e.g., 'HPCA Stadium leads with an average first-innings score of 191.2 runs, followed by Maharaja Yadavindra Singh Stadium at 186.6 runs.').
+3. Round all numbers mentioned to 1 decimal place (e.g., 191.2 runs, 61.1%). Never write out 10+ decimal digits.
+4. Keep it concise, executive, and readable in under 3 seconds.
 
 Question: {question}
 Rows:

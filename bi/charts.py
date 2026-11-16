@@ -118,7 +118,10 @@ def create_chart(df: pd.DataFrame) -> go.Figure | None:
     # 3. Bar Chart for Categorical Rankings (Venues, Teams, Players, Weather Bands)
     if categorical_columns:
         x_col = categorical_columns[0]
-        y_col = numeric_columns[0]
+        # Prefer the key analytical metric (runs, avg, win_pct) over row counts or match IDs
+        candidate_metrics = [c for c in numeric_columns if not any(k in c.lower() for k in ("id", "matches", "count"))]
+        y_col = candidate_metrics[0] if candidate_metrics else numeric_columns[0]
+
         plot_df = df.head(12).copy()
         palette = _choose_color_scale(y_col)
 

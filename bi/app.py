@@ -178,9 +178,53 @@ def get_data_coverage() -> dict[str, object]:
     return {"min_season": 2008, "max_season": 2024, "total_matches": 1243, "total_venues": 36}
 
 
+def _clean_summary_text(text: str) -> str:
+    import re
+    # If text has runaway floats like 191.21052631578945, truncate to 1 decimal:
+    cleaned = re.sub(r'(\d+\.\d)\d{2,}', r'\1', text)
+    return cleaned
+
+
 def render_response(summary: str, sql: str, results: pd.DataFrame, chart) -> None:
+    cleaned_summary = _clean_summary_text(summary)
+
+    # Clean and round the dataframe
+    display_df = results.copy()
+    float_cols = display_df.select_dtypes(include=["float64", "float32"]).columns
+    if len(float_cols) > 0:
+        display_df[float_cols] = display_df[float_cols].round(2)
+
+    # Pretty column headers (e.g. venue_name -> Venue Name)
+    pretty_cols = {c: c.replace("_", " ").title() for c in display_df.columns}
+    display_df = display_df.rename(columns=pretty_cols)
+
+    # Top Metric Callout Cards
+    num_cols = results.select_dtypes(include="number").columns
+    cat_cols = [c for c in results.columns if c not in num_cols]
+    if len(results) > 0 and len(num_cols) > 0:
+        col1, col2, col3 = st.columns(3)
+        top_row = results.iloc[0]
+        if cat_cols:
+            entity_val = str(top_row[cat_cols[0]])
+            col1.metric("🥇 Top Leader", entity_val)
+        else:
+            col1.metric("📊 Total Rows", f"{len(results)} rows")
+
+        m_col = num_cols[0]
+        val = top_row[m_col]
+        val_str = f"{val:.1f}" if isinstance(val, (int, float)) else str(val)
+        col2.metric(f"🎯 {m_col.replace('_', ' ').title()}", val_str)
+
+        if len(num_cols) > 1:
+            m2_col = num_cols[1]
+            val2 = top_row[m2_col]
+            val2_str = f"{val2:.1f}" if isinstance(val2, (int, float)) else str(val2)
+            col3.metric(f"📈 {m2_col.replace('_', ' ').title()}", val2_str)
+        else:
+            col3.metric("🏟️ Sample Size", f"{len(results)} records")
+
     # 1. Summary highlight card
-    st.markdown(f'<div class="summary-card"><b>Key Finding:</b> {summary}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="summary-card">💡 <b>Executive Insight:</b> {cleaned_summary}</div>', unsafe_allow_html=True)
 
     # 2. Tabs for Chart, Data Table, and SQL
     tab_chart, tab_data, tab_sql = st.tabs(["📊 Interactive Visualization", "📋 Data Table", "🔍 Generated SQL"])
@@ -192,10 +236,10 @@ def render_response(summary: str, sql: str, results: pd.DataFrame, chart) -> Non
             st.info("A single metric value was returned. See the data table or summary above.")
 
     with tab_data:
-        st.dataframe(results, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
         # Quick CSV Download
         csv_buffer = io.BytesIO()
-        results.to_csv(csv_buffer, index=False)
+        display_df.to_csv(csv_buffer, index=False)
         st.download_button(
             label="📥 Download Results as CSV",
             data=csv_buffer.getvalue(),
