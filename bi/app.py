@@ -127,14 +127,14 @@ st.markdown(
 
     /* Summary Card */
     .summary-card {
-        background: rgba(56, 189, 248, 0.08);
-        border-left: 3px solid #38BDF8;
-        padding: 12px 16px;
-        border-radius: 0 8px 8px 0;
-        font-size: 14.5px;
-        line-height: 1.5;
-        color: #E2E8F0;
-        margin-bottom: 16px;
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-left: 4px solid #38BDF8;
+        padding: 14px 18px;
+        border-radius: 8px;
+        color: #F1F5F9;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
     }
     </style>
     """,
@@ -178,15 +178,53 @@ def get_data_coverage() -> dict[str, object]:
     return {"min_season": 2008, "max_season": 2024, "total_matches": 1243, "total_venues": 36}
 
 
-def _clean_summary_text(text: str) -> str:
+def _format_summary_html(text: str) -> str:
     import re
-    # If text has runaway floats like 191.21052631578945, truncate to 1 decimal:
+    # Truncate any long decimals like 191.21052631578945 to 1 decimal:
     cleaned = re.sub(r'(\d+\.\d)\d{2,}', r'\1', text)
-    return cleaned
+
+    # Check if text contains a numbered list like 1) ... 2) ... or 1. ... 2. ...
+    splits = re.split(r'(?:,\s*|\s+and\s+|\s+|^)(\d+)[\.\)]\s+', cleaned)
+    if len(splits) >= 3:
+        intro = splits[0].strip().rstrip(':')
+        items = []
+        for i in range(1, len(splits), 2):
+            num = splits[i]
+            desc = splits[i + 1].strip().rstrip('.,;')
+            items.append((num, desc))
+
+        html_parts = []
+        if intro:
+            html_parts.append(f"<div style='font-size: 13.5px; font-weight: 600; color: #F8FAFC; margin-bottom: 10px;'>{intro}:</div>")
+
+        display_items = items[:5]
+        for num, desc in display_items:
+            m = re.match(r'^([^\(]+)(\(.*\))$', desc)
+            if m:
+                name, stats = m.groups()
+                body = f"<strong style='color: #FFFFFF; font-size: 14px;'>{name.strip()}</strong> <span style='color: #CBD5E1; font-size: 13px;'>{stats.strip()}</span>"
+            else:
+                body = f"<span style='color: #E2E8F0; font-size: 13.5px;'>{desc}</span>"
+
+            html_parts.append(
+                f"<div style='display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px; padding: 8px 12px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 6px;'>"
+                f"<span style='background: rgba(56, 189, 248, 0.2); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap;'>#{num}</span>"
+                f"<div style='line-height: 1.45;'>{body}</div>"
+                f"</div>"
+            )
+        if len(items) > 5:
+            html_parts.append(
+                f"<div style='margin-top: 8px; font-size: 12px; color: #94A3B8; font-style: italic;'>"
+                f"📊 Venues 6 to {len(items)} are fully detailed in the interactive chart and data table below."
+                f"</div>"
+            )
+        return "".join(html_parts)
+
+    return f"<p style='margin: 0; font-weight: 400; line-height: 1.6; color: #F1F5F9;'>{cleaned}</p>"
 
 
 def render_response(summary: str, sql: str, results: pd.DataFrame, chart) -> None:
-    cleaned_summary = _clean_summary_text(summary)
+    formatted_html = _format_summary_html(summary)
 
     # Clean and round the dataframe
     display_df = results.copy()
@@ -224,7 +262,17 @@ def render_response(summary: str, sql: str, results: pd.DataFrame, chart) -> Non
             col3.metric("🏟️ Sample Size", f"{len(results)} records")
 
     # 1. Summary highlight card
-    st.markdown(f'<div class="summary-card">💡 <b>Executive Insight:</b> {cleaned_summary}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="summary-card">
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: #38BDF8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>💡</span> EXECUTIVE INSIGHT
+            </div>
+            {formatted_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # 2. Tabs for Chart, Data Table, and SQL
     tab_chart, tab_data, tab_sql = st.tabs(["📊 Interactive Visualization", "📋 Data Table", "🔍 Generated SQL"])
